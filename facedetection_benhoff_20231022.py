@@ -138,10 +138,10 @@ class MainWindow(QMainWindow):
         self.main_widget = MainWidget(haarcascade_filepath)
         self.setCentralWidget(self.main_widget)
 
-        self.setup_controll()
+        #self.setup_controll()
 
-    def setup_controll(self):
-        self.openfile_button.clicked.connect(self.main_widget.start_recording)
+    #def setup_controll(self):
+
 
 
 def main(haar_cascade_filepath):
