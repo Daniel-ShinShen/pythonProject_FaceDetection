@@ -41,36 +41,35 @@ class RecordVideo(QtCore.QObject):
 
 
 class CircleDetectionWidget(QtWidgets.QWidget):
-    def __init__(self, haar_cascade_filepath, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.classifier = cv2.CascadeClassifier(haar_cascade_filepath)
         self.image = QtGui.QImage()
         self._red = (0, 0, 255)
         self._width = 2
         self._min_size = (30, 30)
 
     def detect_circles(self, image: np.ndarray):
-        #detect circles using hough circle transform
+        # Convert the image to grayscale
         gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        # Apply median blur to reduce noise
         gray_image = cv2.medianBlur(gray_image, 5)
+        # Use Hough Circle Transform to detect circles
         circles = cv2.HoughCircles(gray_image, cv2.HOUGH_GRADIENT, 1, 20,
                                   param1=50, param2=30, minRadius=0, maxRadius=0)
-        detected_circles = np.uint16(np.around(circles))
-
-        faces = self.classifier.detectMultiScale(gray_image,
-                                                 scaleFactor=1.3,
-                                                 minNeighbors=4,
-                                                 flags=cv2.CASCADE_SCALE_IMAGE,
-                                                 minSize=self._min_size)
-
-        return detected_circles
+        if circles is not None:
+            detected_circles = np.uint16(np.around(circles))
+            return detected_circles
+        else:
+            return []
 
     def image_data_slot(self, image_data):
-        faces = self.detect_circles(image_data)
+        circles = self.detect_circles(image_data)
         #draw the circles
-        for (x, y, r) in faces[0, :]:
-            cv2.circle(image_data, (x, y), r, (0, 0, 0), 3)
-            cv2.circle(image_data, (x, y), 2, (0, 255, 255), 3)
+        for circle in circles[0, :]:
+            center = (circle[0], circle[1])
+            radius = circle[2]
+            cv2.circle(image_data, center, radius, (0, 0, 0), 3)
+            cv2.circle(image_data, center, 2, (0, 255, 255), 3)
 
         self.image = self.get_qimage(image_data)
         if self.image.size() != self.size():
@@ -98,10 +97,9 @@ class CircleDetectionWidget(QtWidgets.QWidget):
 
 
 class MainWidget(QtWidgets.QWidget):
-    def __init__(self, haarcascade_filepath, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        fp = haarcascade_filepath
-        self.circle_detection_widget = CircleDetectionWidget(fp)
+        self.circle_detection_widget = CircleDetectionWidget()
 
         # TODO: set video port
         self.record_video = RecordVideo()
@@ -126,16 +124,15 @@ class MainWidget(QtWidgets.QWidget):
 
 class MainWindow(QMainWindow):
     file = ''
-    def __init__(self, haarcascade_filepath, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         uic.loadUi("mainwindow.ui", self)
         self.setFixedSize(QSize(1300, 700))
         self.setWindowTitle("Face Recognition GUI")
-        fp = haarcascade_filepath
         p = self.palette()
         p.setColor(QPalette.Window, Qt.white)
         self.setPalette(p)
-        self.main_widget = MainWidget(haarcascade_filepath)
+        self.main_widget = MainWidget()
         self.setCentralWidget(self.main_widget)
 
         #self.setup_controll()
@@ -144,19 +141,13 @@ class MainWindow(QMainWindow):
 
 
 
-def main(haar_cascade_filepath):
+def main():
     app = QtWidgets.QApplication(sys.argv)
-    window = MainWindow(haar_cascade_filepath)
+    window = MainWindow()
     window.show()
     sys.exit(app.exec_())
 
 
 if __name__ == '__main__':
     script_dir = path.dirname(path.realpath(__file__))
-    cascade_filepath = path.join(script_dir,
-                                 '..',
-                                 'pythonProject_FaceDetection',
-                                 'haarcascade_frontalface_default.xml')
-
-    cascade_filepath = path.abspath(cascade_filepath)
-    main(cascade_filepath)
+    main()
