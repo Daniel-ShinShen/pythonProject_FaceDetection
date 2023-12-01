@@ -8,7 +8,6 @@ from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 from PyQt5 import QtGui
 from PyQt5.QtGui import QPalette
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 
 from PyQt5.QtWidgets import QApplication, QWidget, QToolBar, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton, QLabel, \
     QLabel, QMessageBox, QMainWindow, QStyle, QFileDialog
@@ -41,7 +40,7 @@ class RecordVideo(QtCore.QObject):
         print(self.filename)
 
 
-class FaceDetectionWidget(QtWidgets.QWidget):
+class CircleDetectionWidget(QtWidgets.QWidget):
     def __init__(self, haar_cascade_filepath, parent=None):
         super().__init__(parent)
         self.classifier = cv2.CascadeClassifier(haar_cascade_filepath)
@@ -51,11 +50,9 @@ class FaceDetectionWidget(QtWidgets.QWidget):
         self._min_size = (30, 30)
 
     def detect_circles(self, image: np.ndarray):
-        # haarclassifiers work better in black and white
-        output = image.copy()
+        #detect circles using hough circle transform
         gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         gray_image = cv2.medianBlur(gray_image, 5)
-        #gray_image = cv2.equalizeHist(gray_image)
         circles = cv2.HoughCircles(gray_image, cv2.HOUGH_GRADIENT, 1, 20,
                                   param1=50, param2=30, minRadius=0, maxRadius=0)
         detected_circles = np.uint16(np.around(circles))
@@ -104,17 +101,17 @@ class MainWidget(QtWidgets.QWidget):
     def __init__(self, haarcascade_filepath, parent=None):
         super().__init__(parent)
         fp = haarcascade_filepath
-        self.face_detection_widget = FaceDetectionWidget(fp)
+        self.circle_detection_widget = CircleDetectionWidget(fp)
 
         # TODO: set video port
         self.record_video = RecordVideo()
 
-        image_data_slot = self.face_detection_widget.image_data_slot
+        image_data_slot = self.circle_detection_widget.image_data_slot
         self.record_video.image_data.connect(image_data_slot)
 
         layout = QtWidgets.QVBoxLayout()
 
-        layout.addWidget(self.face_detection_widget)
+        layout.addWidget(self.circle_detection_widget)
         self.run_button = QtWidgets.QPushButton('Start')
         layout.addWidget(self.run_button)
 
