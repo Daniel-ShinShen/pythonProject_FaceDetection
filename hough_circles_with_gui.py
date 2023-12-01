@@ -126,8 +126,8 @@ class MainWindow(QMainWindow):
     file = ''
     def __init__(self, parent=None):
         super().__init__(parent)
-        uic.loadUi("mainwindow.ui", self)
-        self.setFixedSize(QSize(1300, 700))
+        #uic.loadUi("mainwindow.ui", self)
+        self.setFixedSize(QSize(1300, 850))
         self.setWindowTitle("Face Recognition GUI")
         p = self.palette()
         p.setColor(QPalette.Window, Qt.white)
