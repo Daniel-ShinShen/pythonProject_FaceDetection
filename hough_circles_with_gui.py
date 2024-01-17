@@ -53,9 +53,10 @@ class CircleDetectionWidget(QtWidgets.QWidget):
         gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         # Apply median blur to reduce noise
         gray_image = cv2.medianBlur(gray_image, 5)
+        edges = cv2.Canny(gray_image, 100, 350)
         # Use Hough Circle Transform to detect circles
-        circles = cv2.HoughCircles(gray_image, cv2.HOUGH_GRADIENT, 1, 20,
-                                  param1=50, param2=30, minRadius=0, maxRadius=0)
+        circles = cv2.HoughCircles(edges, cv2.HOUGH_GRADIENT, 1, 10,
+                                  param1=50, param2=15, minRadius=14, maxRadius=30)
         if circles is not None:
             detected_circles = np.uint16(np.around(circles))
             return detected_circles
@@ -64,12 +65,13 @@ class CircleDetectionWidget(QtWidgets.QWidget):
 
     def image_data_slot(self, image_data):
         circles = self.detect_circles(image_data)
-        #draw the circles
-        for circle in circles[0, :]:
-            center = (circle[0], circle[1])
-            radius = circle[2]
-            cv2.circle(image_data, center, radius, (0, 0, 0), 3)
-            cv2.circle(image_data, center, 2, (0, 255, 255), 3)
+        if circles is not None:
+            #draw the circles
+            for circle in circles[0, :]:
+                center = (circle[0], circle[1])
+                radius = circle[2]
+                cv2.circle(image_data, center, radius, (0, 0, 0), 3)
+                cv2.circle(image_data, center, 2, (0, 255, 255), 3)
 
         self.image = self.get_qimage(image_data)
         if self.image.size() != self.size():
@@ -79,12 +81,20 @@ class CircleDetectionWidget(QtWidgets.QWidget):
 
     def get_qimage(self, image: np.ndarray):
         height, width, colors = image.shape
-        bytesPerLine = 3 * width
+
+        # Set the desired width for resizing
+        target_width = 800  # Adjust this value according to your preference
+        # Calculate the corresponding height to maintain aspect ratio
+        target_height = int(height * (target_width / width))
+        # Resize the image
+        resized_image = cv2.resize(image, (target_width, target_height))
+
+        bytesPerLine = 3 * target_width
         QImage = QtGui.QImage
 
-        image = QImage(image.data,
-                       width,
-                       height,
+        image = QImage(resized_image.data,
+                       target_width,
+                       target_height,
                        bytesPerLine,
                        QImage.Format_RGB888)
 
@@ -126,7 +136,7 @@ class MainWindow(QMainWindow):
     file = ''
     def __init__(self, parent=None):
         super().__init__(parent)
-        #uic.loadUi("mainwindow.ui", self)
+        uic.loadUi("mainwindow.ui", self)
         self.setFixedSize(QSize(1300, 850))
         self.setWindowTitle("Face Recognition GUI")
         p = self.palette()
