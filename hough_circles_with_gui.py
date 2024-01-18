@@ -7,7 +7,7 @@ import numpy as np
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 from PyQt5 import QtGui
-from PyQt5.QtGui import QPalette, QPixmap
+from PyQt5.QtGui import QPalette, QPixmap, QImage
 
 from PyQt5.QtWidgets import QApplication, QWidget, QToolBar, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton, QLabel, \
     QLabel, QMessageBox, QMainWindow, QStyle, QFileDialog
@@ -48,14 +48,16 @@ class MainWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         uic.loadUi("mainwindow.ui", self)
-        self.setFixedSize(QSize(1300, 850))
+        #self.setFixedSize(QSize(800, 850))
         self.setWindowTitle("Face Recognition GUI")
-
+        #setting window color
         p = self.palette()
         p.setColor(QPalette.Window, Qt.white)
         self.setPalette(p)
 
-        self.image = QtGui.QImage()
+        self.paint_label.setGeometry(0, 0, 600, 600)
+        self.image = QtGui.QImage(self.paint_label.size(), QImage.Format_RGB32)
+        self.image.fill(Qt.black)
         self.paint_label.setPixmap(QPixmap.fromImage(self.image))
         self._red = (0, 0, 255)
         self._width = 2
@@ -64,12 +66,8 @@ class MainWindow(QMainWindow):
 
         # TODO: set video port
         self.record_video = RecordVideo()
-
         image_data_slot = self.image_data_slot
         self.record_video.image_data.connect(image_data_slot)
-
-        #self.main_widget = MainWidget()
-        #self.setCentralWidget(self.main_widget)
 
         self.setup_controll()
     def setup_controll(self):
@@ -78,7 +76,6 @@ class MainWindow(QMainWindow):
         filename, _ = QFileDialog.getOpenFileName(self, "Open Video")
         if filename:
             self.record_video.start_recording(filename)
-
     def image_data_slot(self, image_data):
         circles = self.detect_circles(image_data)
         if circles is not None:
@@ -119,7 +116,9 @@ class MainWindow(QMainWindow):
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
-        painter.drawImage(0, 0, self.image)
+
+        #painter.drawImage(0, 0, self.image)
+        self.paint_label.setPixmap(QPixmap.fromImage(self.image))
     def detect_circles(self, image: np.ndarray):
         # Convert the image to grayscale
         gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -138,7 +137,7 @@ class MainWindow(QMainWindow):
 
 
 if __name__ == '__main__':
-    script_dir = path.dirname(path.realpath(__file__))
+    #script_dir = path.dirname(path.realpath(__file__))
     app = QtWidgets.QApplication(sys.argv)
     window = MainWindow()
     window.show()
