@@ -1,6 +1,5 @@
 import sys
 from os import path
-
 import cv2
 import numpy as np
 
@@ -13,6 +12,9 @@ from PyQt5.QtWidgets import QApplication, QWidget, QToolBar, QVBoxLayout, QHBoxL
     QLabel, QMessageBox, QMainWindow, QStyle, QFileDialog
 from PyQt5.QtCore import QSize, Qt, pyqtSignal, QUrl, QThread
 from PyQt5 import uic
+
+from ultralytics import YOLO
+import random
 class RecordVideo(QtCore.QObject):
     image_data = QtCore.pyqtSignal(np.ndarray)
 
@@ -48,9 +50,10 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         # Load the UI file
         uic.loadUi("mainwindow.ui", self)
-        #self.setFixedSize(QSize(800, 850))
+
         # Set window properties
         self.setWindowTitle("Face Recognition GUI")
+        # self.setFixedSize(QSize(800, 850))
         p = self.palette()
         p.setColor(QPalette.Window, Qt.white)
         self.setPalette(p)
@@ -63,6 +66,8 @@ class MainWindow(QMainWindow):
         self._red = (0, 0, 255)
         self._width = 2
         self._min_size = (30, 30)
+        # create a list of random color for tracking
+        self.colors = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)) for j in range(10)]
 
 
         # TODO: set video port
@@ -78,10 +83,31 @@ class MainWindow(QMainWindow):
         if filename:
             self.record_video.start_recording(filename)
 
+    # Detect circles/human head in the image and draw them
     def image_data_slot(self, image_data):
         try:
-            circles = self.detect_circles(image_data)
+            model = YOLO("yolov8n.pt")
 
+
+            results = model(image_data)
+            print(results)
+
+            for result in results:  # only one object inside results
+                detections = []
+                for r in result.boxes.data.tolist():
+                    print(r)
+                    x1, y1, x2, y2, score, class_id = r  # unwrap the information
+                    # read
+                    x1 = int(x1)
+                    x2 = int(x2)
+                    y1 = int(y1)
+                    y2 = int(y2)
+                    class_id = int(class_id)
+                    detections.append([x1, y1, x2, y2, score])
+
+                    cv2.rectangle(image_data, (int(x1), int(y1)), (int(x2), int(y2)), (self.colors[100 % len(self.colors)]), 3)
+            """""
+            circles = self.detect_circles(image_data)
             if circles is not None:
                 # Draw the circles
                 for circle in circles[0, :]:
@@ -89,7 +115,7 @@ class MainWindow(QMainWindow):
                     radius = circle[2]
                     cv2.circle(image_data, center, radius, (0, 0, 0), 3)
                     cv2.circle(image_data, center, 2, (0, 255, 255), 3)
-
+            """""
             self.image = self.get_qimage(image_data)
             if self.image.size() != self.size():
                 self.setFixedSize(self.image.size())
