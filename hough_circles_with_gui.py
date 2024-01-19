@@ -35,11 +35,10 @@ class RecordVideo(QtCore.QObject):
             self.image_data.emit(data)
 
     def getfilename(self, file):
+        # Store the filename for reference
         self.filename = file
         self.camera = cv2.VideoCapture(self.filename)
         print(self.filename)
-
-
 
 
 
@@ -47,14 +46,16 @@ class MainWindow(QMainWindow):
     file = ''
     def __init__(self, parent=None):
         super().__init__(parent)
+        # Load the UI file
         uic.loadUi("mainwindow.ui", self)
         #self.setFixedSize(QSize(800, 850))
+        # Set window properties
         self.setWindowTitle("Face Recognition GUI")
-        #setting window color
         p = self.palette()
         p.setColor(QPalette.Window, Qt.white)
         self.setPalette(p)
 
+        # Create an image label for displaying video frames
         self.paint_label.setGeometry(0, 0, 600, 600)
         self.image = QtGui.QImage(self.paint_label.size(), QImage.Format_RGB32)
         self.image.fill(Qt.black)
@@ -76,22 +77,29 @@ class MainWindow(QMainWindow):
         filename, _ = QFileDialog.getOpenFileName(self, "Open Video")
         if filename:
             self.record_video.start_recording(filename)
+
     def image_data_slot(self, image_data):
-        circles = self.detect_circles(image_data)
-        if circles is not None:
-            #draw the circles
-            for circle in circles[0, :]:
-                center = (circle[0], circle[1])
-                radius = circle[2]
-                cv2.circle(image_data, center, radius, (0, 0, 0), 3)
-                cv2.circle(image_data, center, 2, (0, 255, 255), 3)
+        try:
+            circles = self.detect_circles(image_data)
 
-        self.image = self.get_qimage(image_data)
-        if self.image.size() != self.size():
-            self.setFixedSize(self.image.size())
+            if circles is not None:
+                # Draw the circles
+                for circle in circles[0, :]:
+                    center = (circle[0], circle[1])
+                    radius = circle[2]
+                    cv2.circle(image_data, center, radius, (0, 0, 0), 3)
+                    cv2.circle(image_data, center, 2, (0, 255, 255), 3)
 
-        self.update()
+            self.image = self.get_qimage(image_data)
+            if self.image.size() != self.size():
+                self.setFixedSize(self.image.size())
 
+            self.update()
+
+        except Exception as e:
+            print(f"Error in circle detection: {e}")
+
+    # Resize and convert the image to a QImage
     def get_qimage(self, image: np.ndarray):
         height, width, colors = image.shape
 
