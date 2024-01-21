@@ -86,7 +86,7 @@ class MainWindow(QMainWindow):
     # Detect circles/human head in the image and draw them
     def image_data_slot(self, image_data):
         try:
-            model = YOLO("yolov8n.pt")
+            model = YOLO("best_20epoch.pt")
 
 
             results = model(image_data)
@@ -105,7 +105,7 @@ class MainWindow(QMainWindow):
                     class_id = int(class_id)
                     detections.append([x1, y1, x2, y2, score])
 
-                    cv2.rectangle(image_data, (int(x1), int(y1)), (int(x2), int(y2)), (self.colors[100 % len(self.colors)]), 3)
+                    cv2.rectangle(image_data, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 3)#(self.colors[100 % len(self.colors)])
             """""
             circles = self.detect_circles(image_data)
             if circles is not None:
