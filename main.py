@@ -94,9 +94,10 @@ class MainWindow(QMainWindow):
     def start_recording(self):
         filename, _ = QFileDialog.getOpenFileName(self, "Open Video")
         video_name = os.path.splitext(os.path.basename(filename))[0]
-        self.bbox_excel_path = f'{self.dir_path}\\bbox_save_files\\{video_name}_bounding_boxes_with_time.xlsx'
-        self.video_out_path = f'{self.dir_path}\\loading_excel_export_file\\{video_name}_loading_excel_out_0401.mp4'
+
         if filename:
+            self.bbox_excel_path = f'{self.dir_path}\\bbox_save_files\\{video_name}_bounding_boxes_with_time.xlsx'
+            self.video_out_path = f'{self.dir_path}\\loading_excel_export_file\\{video_name}_loading_excel_out_0401.mp4'
             self.record_video.start_recording(filename)
             print(self.video_name)
 
@@ -105,7 +106,7 @@ class MainWindow(QMainWindow):
     def image_data_slot(self, image_data):
         try:
 
-
+            self.label_frame.setText(f'frame: {self.timestamp}')
             # Check if the bounding box Excel file exists
             if not os.path.exists(self.bbox_excel_path):
                 print(self.bbox_excel_path)
@@ -123,13 +124,26 @@ class MainWindow(QMainWindow):
                 print(type(df.loc[self.timestamp].values.tolist()))
                 bboxes = df.loc[self.timestamp].values.tolist()
                 frame_with_bboxes = self.draw_bounding_boxes(image_data.copy(), bboxes)  # Draw bounding boxes on the frame
+                #show bbox position information
+                bbox_list = df.loc[self.timestamp].values.tolist()
+                len_bbox_list = len(bbox_list)
+                self.label_count.setText(f'{len_bbox_list} human head(s) detected')
+                # Convert list of lists to a string with newline characters
+                text = '\n'.join([str(sublist[:-1] + [round(sublist[-1], 2)]) for sublist in bbox_list])
+                self.label_set.setText('[x1, y1, x2, y2, score]')
+                self.label_bbox.setText(text)
                 #cap_out.write(frame_with_bboxes)
                 # for bbox in df.loc[timestamp].values.tolist():
                 # frame_with_bboxes = draw_bounding_boxes(frame.copy(), [bbox])  # Draw bounding boxes on the frame
                 # cap_out.write(frame_with_bboxes)
             else:
                 frame_with_bboxes = image_data
+                # reset text
+                self.label_count.setText('0 human head detected')
+                self.label_set.setText('')
+                self.label_bbox.setText('')
                 #cap_out.write(image_data)
+
 
             if cv2.waitKey(1) & 0xFF == ord('q'):  # Break the loop if 'q' is pressed
                 return 0
@@ -160,8 +174,9 @@ class MainWindow(QMainWindow):
             
             """""
             self.image = self.get_qimage(frame_with_bboxes)
-            if self.image.size() != self.size():
-                self.setFixedSize(self.image.size())
+            #reset size
+            #if self.image.size() != self.size():
+            #    self.setFixedSize(self.image.size())
 
             self.update()
 
@@ -180,7 +195,7 @@ class MainWindow(QMainWindow):
             x2 = int(x2)
             y1 = int(y1)
             y2 = int(y2)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)  # Draw bounding box
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)  # Draw bounding box
         return frame
 
     # Resize and convert the image to a QImage
@@ -191,6 +206,7 @@ class MainWindow(QMainWindow):
         target_width = 800  # Adjust this value according to your preference
         # Calculate the corresponding height to maintain aspect ratio
         target_height = int(height * (target_width / width))
+
         # Resize the image
         resized_image = cv2.resize(image, (target_width, target_height))
 
