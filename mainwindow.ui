@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>557</width>
+    <width>554</width>
     <height>394</height>
    </rect>
   </property>
@@ -57,7 +57,14 @@
          </size>
         </property>
         <property name="text">
-         <string>start</string>
+         <string>Import Video</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="pause_button">
+        <property name="text">
+         <string>Pause</string>
         </property>
        </widget>
       </item>
@@ -149,7 +156,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>557</width>
+     <width>554</width>
      <height>18</height>
     </rect>
    </property>
