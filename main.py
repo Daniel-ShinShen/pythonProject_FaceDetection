@@ -11,7 +11,7 @@ from PyQt5 import QtGui
 from PyQt5.QtGui import QPalette, QPixmap, QImage
 
 from PyQt5.QtWidgets import QApplication, QWidget, QToolBar, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton, QLabel, \
-    QLabel, QMessageBox, QMainWindow, QStyle, QFileDialog
+    QLabel, QMessageBox, QMainWindow, QStyle, QFileDialog, QSlider
 from PyQt5.QtCore import QSize, Qt, pyqtSignal, QUrl, QThread
 from PyQt5 import uic
 
@@ -50,6 +50,12 @@ class RecordVideo(QtCore.QObject):
         if event.timerId() != self.timer.timerId():
             return
 
+        read, data = self.camera.read()
+        if read:
+            self.image_data.emit(data)
+
+    def update_frame_based_on_timestamp(self, timestamp):
+        self.camera.set(cv2.CAP_PROP_POS_FRAMES, timestamp)  # Set frame position
         read, data = self.camera.read()
         if read:
             self.image_data.emit(data)
@@ -98,6 +104,7 @@ class MainWindow(QMainWindow):
         self.paused = False  # Flag to track whether the video is paused or not
         # Flag to indicate if video is restarted from frame 0
         self.video_restarted = False
+        self.total_frames = 0
 
         # TODO: set video port
         self.record_video = RecordVideo()
@@ -109,6 +116,13 @@ class MainWindow(QMainWindow):
     def setup_controll(self):
         self.run_button.clicked.connect(self.start_recording)
         self.pause_button.clicked.connect(self.toggle_pause_resume)
+        #horizontal slider for frame selection
+        self.frame_slider.setMinimum(0)
+        self.frame_slider.setMaximum(0)  # Adjust the maximum value according to your video length
+        self.frame_slider.setValue(0)
+        self.frame_slider.setTickPosition(QSlider.TicksBelow)
+        self.frame_slider.setTickInterval(1)
+        self.frame_slider.valueChanged.connect(self.slider_value_changed)
 
     def start_recording(self):
         filename, _ = QFileDialog.getOpenFileName(self, "Open Video")
@@ -118,14 +132,23 @@ class MainWindow(QMainWindow):
             self.video_restarted = True
             self.bbox_excel_path = f'{self.dir_path}\\bbox_save_files\\{video_name}_bounding_boxes_with_time.xlsx'
             self.video_out_path = f'{self.dir_path}\\loading_excel_export_file\\{video_name}_loading_excel_out_0401.mp4'
+            self.total_frames = self.get_video_length(filename)
+            self.frame_slider.setMaximum(self.total_frames)
+            self.frame_slider.setValue(0)
             self.record_video.start_recording(filename)
-            print(self.video_name)
+            print(f'self.total_frames: {self.total_frames}')
+
+    def slider_value_changed(self, value):
+        # Update the frame shown on the GUI according to the slider value
+        self.timestamp = value
+        # Call the method to update the frame based on the new timestamp
+        self.record_video.update_frame_based_on_timestamp(self.timestamp)
 
     # Detect circles/human head in the image and draw them
     def image_data_slot(self, image_data):
         try:
 
-            self.label_frame.setText(f'frame: {self.timestamp}')
+            self.label_frame.setText(f'frame: {self.timestamp}/{self.total_frames}')
             # Check if the bounding box Excel file exists
             if not os.path.exists(self.bbox_excel_path):
                 print(self.bbox_excel_path)
@@ -264,6 +287,23 @@ class MainWindow(QMainWindow):
         else:
             self.record_video.resume()
             self.pause_button.setText("Pause")
+
+    def get_video_length(self, video_path):
+        # Open the video file
+        cap = cv2.VideoCapture(video_path)
+
+        # Check if the video file is opened successfully
+        if not cap.isOpened():
+            print("Error: Unable to open video file.")
+            return None
+
+        # Get the total number of frames
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        # Release the video capture object
+        cap.release()
+
+        return total_frames
 
 
 if __name__ == '__main__':
