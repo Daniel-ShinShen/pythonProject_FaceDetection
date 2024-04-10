@@ -83,7 +83,7 @@ class MainWindow(QMainWindow):
         self.setPalette(p)
 
         # Create an image label for displaying video frames
-        self.paint_label.setGeometry(0, 0, 600, 600)
+        self.paint_label.setGeometry(0, 0, 800, 800)
         self.image = QtGui.QImage(self.paint_label.size(), QImage.Format_RGB32)
         self.image.fill(Qt.black)
         self.paint_label.setPixmap(QPixmap.fromImage(self.image))
@@ -136,6 +136,8 @@ class MainWindow(QMainWindow):
             self.frame_slider.setMaximum(self.total_frames)
             self.frame_slider.setValue(0)
             self.record_video.start_recording(filename)
+            self.record_video.resume()
+            self.pause_button.setText("Pause")
             print(f'self.total_frames: {self.total_frames}')
 
     def slider_value_changed(self, value):
