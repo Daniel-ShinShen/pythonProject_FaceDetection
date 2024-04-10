@@ -9,6 +9,7 @@ from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 from PyQt5 import QtGui
 from PyQt5.QtGui import QPalette, QPixmap, QImage
+from PyQt5.QtGui import QIntValidator
 
 from PyQt5.QtWidgets import QApplication, QWidget, QToolBar, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton, QLabel, \
     QLabel, QMessageBox, QMainWindow, QStyle, QFileDialog, QSlider
@@ -124,6 +125,19 @@ class MainWindow(QMainWindow):
         self.frame_slider.setTickInterval(1)
         self.frame_slider.valueChanged.connect(self.slider_value_changed)
 
+        # setting geometry(size)
+        #self.frame_slider.setFixedWidth(550)  # Adjust the width according to your preference
+        self.run_button.setFixedWidth(130)
+        self.pause_button.setFixedWidth(100)
+        self.frame_jump_edit.setFixedWidth(150)
+        self.jump_button.setFixedWidth(100)
+
+        # Connect the button's clicked signal to a custom slot
+        self.jump_button.clicked.connect(self.jump_to_frame)
+        # Restrict jump_edit QLineEdit to accept only integer values
+        int_validator = QIntValidator()
+        self.frame_jump_edit.setValidator(int_validator)
+
     def start_recording(self):
         filename, _ = QFileDialog.getOpenFileName(self, "Open Video")
         video_name = os.path.splitext(os.path.basename(filename))[0]
@@ -131,7 +145,7 @@ class MainWindow(QMainWindow):
         if filename:
             self.video_restarted = True
             self.bbox_excel_path = f'{self.dir_path}\\bbox_save_files\\{video_name}_bounding_boxes_with_time.xlsx'
-            self.video_out_path = f'{self.dir_path}\\loading_excel_export_file\\{video_name}_loading_excel_out_0401.mp4'
+
             self.total_frames = self.get_video_length(filename)
             self.frame_slider.setMaximum(self.total_frames)
             self.frame_slider.setValue(0)
@@ -158,9 +172,6 @@ class MainWindow(QMainWindow):
 
             # Read bounding box data from Excel with the first column as index
             df = pd.read_excel(self.bbox_excel_path, index_col=0)
-            # cap = cv2.VideoCapture(self.filename)
-            # cap_out = cv2.VideoWriter(self.video_out_path, cv2.VideoWriter_fourcc(*'MP4V'), cap.get(cv2.CAP_PROP_FPS),
-            # (image_data.shape[1], image_data.shape[0]))
 
             # Reset timestamp if video is restarted from frame 0
             if self.video_restarted:
@@ -239,17 +250,15 @@ class MainWindow(QMainWindow):
     def draw_bounding_boxes(self, frame, bounding_boxes):
         print(f'bounding_boxes: {bounding_boxes}')
         print(type(bounding_boxes[0]))
-        try:
-            for bbox in bounding_boxes:
-                x1, y1, x2, y2, score = bbox  # Extracting coordinates
-                x1 = int(x1)
-                x2 = int(x2)
-                y1 = int(y1)
-                y2 = int(y2)
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)  # Draw bounding box
-            return frame
-        except Exception as e:
-            print(f"Error in draw_bounding_boxes: {e}")
+
+        for bbox in bounding_boxes:
+            x1, y1, x2, y2, score = bbox  # Extracting coordinates
+            x1 = int(x1)
+            x2 = int(x2)
+            y1 = int(y1)
+            y2 = int(y2)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)  # Draw bounding box
+        return frame
 
     # Resize and convert the image to a QImage
     def get_qimage(self, image: np.ndarray):
@@ -306,6 +315,16 @@ class MainWindow(QMainWindow):
         cap.release()
 
         return total_frames
+
+    def jump_to_frame(self):
+        try:
+            # Retrieve the text from the QLineEdit and convert it to an integer
+            frame_number = int(self.frame_jump_edit.text())
+            if frame_number <= self.total_frames:
+                # Set the value of the QSlider to the frame number
+                self.frame_slider.setValue(frame_number)
+        except ValueError:
+            print("Invalid frame number entered.")
 
 
 if __name__ == '__main__':
