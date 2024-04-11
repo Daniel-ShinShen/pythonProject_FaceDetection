@@ -149,9 +149,8 @@ class MainWindow(QMainWindow):
             self.total_frames = self.get_video_length(filename)
             self.frame_slider.setMaximum(self.total_frames)
             self.frame_slider.setValue(0)
+            self.timestamp = 0
             self.record_video.start_recording(filename)
-            self.record_video.resume()
-            self.pause_button.setText("Pause")
             print(f'self.total_frames: {self.total_frames}')
 
     def slider_value_changed(self, value):
@@ -175,7 +174,7 @@ class MainWindow(QMainWindow):
 
             # Reset timestamp if video is restarted from frame 0
             if self.video_restarted:
-                self.timestamp = df.index.min()
+                # self.timestamp = 0
                 self.video_restarted = False  # Reset the flag
 
             if self.timestamp in df.index:  # Check if timestamp exists in the DataFrame
@@ -328,7 +327,6 @@ class MainWindow(QMainWindow):
 
 
 if __name__ == '__main__':
-    # script_dir = path.dirname(path.realpath(__file__))
     app = QtWidgets.QApplication(sys.argv)
     window = MainWindow()
     window.show()
