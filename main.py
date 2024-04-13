@@ -61,11 +61,6 @@ class RecordVideo(QtCore.QObject):
         if read:
             self.image_data.emit(data)
 
-    def getfilename(self, file):
-        # Store the filename for reference
-        self.filename = file
-        self.camera = cv2.VideoCapture(self.filename)
-        print(f'filename: {self.filename}')
 
 
 class MainWindow(QMainWindow):
@@ -78,6 +73,7 @@ class MainWindow(QMainWindow):
 
         # Set window properties
         self.setWindowTitle("Human Head Detection GUI")
+        self.setWindowIcon(QtGui.QIcon('logo.png'))
         # self.setFixedSize(QSize(800, 850))
         p = self.palette()
         p.setColor(QPalette.Window, Qt.white)
@@ -94,7 +90,7 @@ class MainWindow(QMainWindow):
         # create a list of random color for tracking
         self.colors = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)) for j in range(10)]
 
-        self.video_name = os.path.splitext(os.path.basename(self.file))[0]
+        self.video_name = ''
         # setting timestamp and some excel related stuff
         self.timestamp = 0
         self.dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -106,6 +102,8 @@ class MainWindow(QMainWindow):
         # Flag to indicate if video is restarted from frame 0
         self.video_restarted = False
         self.total_frames = 0
+        self.df = ''
+
 
         # TODO: set video port
         self.record_video = RecordVideo()
@@ -117,13 +115,16 @@ class MainWindow(QMainWindow):
     def setup_controll(self):
         self.run_button.clicked.connect(self.start_recording)
         self.pause_button.clicked.connect(self.toggle_pause_resume)
-        #horizontal slider for frame selection
+        # horizontal slider for frame selection
         self.frame_slider.setMinimum(0)
         self.frame_slider.setMaximum(0)  # Adjust the maximum value according to your video length
         self.frame_slider.setValue(0)
         self.frame_slider.setTickPosition(QSlider.TicksBelow)
         self.frame_slider.setTickInterval(1)
         self.frame_slider.valueChanged.connect(self.slider_value_changed)
+
+        # Connect the combobox's signal to handle the selection
+        self.excel_combobox.currentIndexChanged.connect(self.handle_combobox_selection)
 
         # setting geometry(size)
         #self.frame_slider.setFixedWidth(550)  # Adjust the width according to your preference
@@ -140,18 +141,36 @@ class MainWindow(QMainWindow):
 
     def start_recording(self):
         filename, _ = QFileDialog.getOpenFileName(self, "Open Video")
-        video_name = os.path.splitext(os.path.basename(filename))[0]
+        self.video_name = os.path.splitext(os.path.basename(filename))[0]
 
         if filename:
             self.video_restarted = True
-            self.bbox_excel_path = f'{self.dir_path}\\bbox_save_files\\{video_name}_bounding_boxes_with_time.xlsx'
+            self.bbox_excel_path = f'{self.dir_path}\\bbox_save_files\\{self.video_name}_bounding_boxes_with_time_.xlsx'
+
+            # combobox
+            # Clear the current items in the combobox
+            if self.excel_combobox.count() > 0:
+                self.excel_combobox.blockSignals(True)
+                self.excel_combobox.clear()
+
+            self.populate_combobox()
 
             self.total_frames = self.get_video_length(filename)
-            self.frame_slider.setMaximum(self.total_frames)
+            self.frame_slider.setMaximum(self.total_frames-1)
             self.frame_slider.setValue(0)
             self.timestamp = 0
             self.record_video.start_recording(filename)
             print(f'self.total_frames: {self.total_frames}')
+
+            # load data from import data file
+            # Check if the bounding box Excel file exists
+            if not os.path.exists(self.bbox_excel_path):
+                print(self.bbox_excel_path)
+                raise FileNotFoundError("Bounding box Excel file not found.")
+
+            # Read bounding box data from Excel with the first column as index
+            self.df = pd.read_excel(self.bbox_excel_path, index_col=0)
+            print(type(self.df))
 
     def slider_value_changed(self, value):
         # Update the frame shown on the GUI according to the slider value
@@ -163,31 +182,27 @@ class MainWindow(QMainWindow):
     def image_data_slot(self, image_data):
         try:
 
-            self.label_frame.setText(f'frame: {self.timestamp}/{self.total_frames}')
-            # Check if the bounding box Excel file exists
-            if not os.path.exists(self.bbox_excel_path):
-                print(self.bbox_excel_path)
-                raise FileNotFoundError("Bounding box Excel file not found.")
+            self.label_frame.setText(f'frame: {self.timestamp}/{self.total_frames - 1}')
+            if self.timestamp % 100 == 0:
+                self.frame_slider.setValue(self.timestamp)
 
-            # Read bounding box data from Excel with the first column as index
-            df = pd.read_excel(self.bbox_excel_path, index_col=0)
+            if self.timestamp == self.total_frames - 1:
+                self.frame_slider.setValue(self.timestamp)
 
             # Reset timestamp if video is restarted from frame 0
             if self.video_restarted:
-                # self.timestamp = 0
+                self.timestamp = 0
                 self.video_restarted = False  # Reset the flag
 
-            if self.timestamp in df.index:  # Check if timestamp exists in the DataFrame
-                print(f'timestamp:　{self.timestamp}')
-                print(df.loc[self.timestamp].values.tolist())
-                print(type(df.loc[self.timestamp].values.tolist()))
-                bboxes = df.loc[self.timestamp].values.tolist()
+            if self.timestamp in self.df.index:  # Check if timestamp exists in the DataFrame
+                print(self.df.loc[self.timestamp].values.tolist())
+                bboxes = self.df.loc[self.timestamp].values.tolist()
                 if isinstance(bboxes[0], float):
                     bboxes = [bboxes]
                 frame_with_bboxes = self.draw_bounding_boxes(image_data.copy(),
                                                              bboxes)  # Draw bounding boxes on the frame
                 # show bbox position information
-                bbox_list = df.loc[self.timestamp].values.tolist()
+                bbox_list = self.df.loc[self.timestamp].values.tolist()
                 if isinstance(bbox_list[0], float):
                     bbox_list = [bbox_list]
                 len_bbox_list = len(bbox_list)
@@ -195,8 +210,6 @@ class MainWindow(QMainWindow):
                 self.label_count.setText(f'{len_bbox_list} human head(s) detected')
                 # Convert list of lists to a string with newline characters ##bug
                 text = '\n'.join([str(sublist[:-1] + [round(sublist[-1], 2)]) for sublist in bbox_list])
-
-                self.label_set.setText('[x1, y1, x2, y2, score]')
                 self.label_bbox.setText(text)
 
             else:
@@ -207,10 +220,10 @@ class MainWindow(QMainWindow):
                 self.label_bbox.setText('')
                 # cap_out.write(image_data)
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):  # Break the loop if 'q' is pressed
-                return 0
-
+            self.label_set.setText('[x1, y1, x2, y2, score]')
             self.timestamp = self.timestamp + 1
+            print(f'timestamp:　{self.timestamp}')
+
 
             """""
             model = YOLO("best_20epoch.pt")
@@ -324,6 +337,36 @@ class MainWindow(QMainWindow):
                 self.frame_slider.setValue(frame_number)
         except ValueError:
             print("Invalid frame number entered.")
+
+    def populate_combobox(self):
+        excel_files_versions = []
+        # Get a list of available Excel files in the directory
+        excel_files = [file for file in os.listdir(f'{self.dir_path}\\bbox_save_files\\') if file.endswith('.xlsx')
+                       and self.video_name in file]
+        for excel_file in excel_files:
+            version_name = excel_file.split('_')
+            excel_files_versions.append(version_name[8])
+        # Populate the combobox with the filtered list of Excel files
+        self.excel_combobox.addItems(excel_files_versions)
+        self.excel_combobox.blockSignals(False)
+
+    def handle_combobox_selection(self, index):
+        # Get the selected Excel file from the combobox
+        selected_excel_file = self.excel_combobox.currentText()
+        # Update the bbox_excel_path variable accordingly
+        self.bbox_excel_path = (f'{self.dir_path}\\bbox_save_files\\{self.video_name}_bounding_boxes_with_time'
+                                f'_{selected_excel_file}')
+
+        # reloading from the new Excel file
+        # Check if the bounding box Excel file exists
+        if not os.path.exists(self.bbox_excel_path):
+            print(self.bbox_excel_path)
+            raise FileNotFoundError("Bounding box Excel file not found.")
+        # Read bounding box data from Excel with the first column as index
+        self.df = pd.read_excel(self.bbox_excel_path, index_col=0)
+
+        print(f'current version: {selected_excel_file}')
+
 
 
 if __name__ == '__main__':
