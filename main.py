@@ -104,6 +104,8 @@ class MainWindow(QMainWindow):
         self.total_frames = 0
         self.df = ''
 
+        # initialize trajectory data
+        self.center_points = []
 
         # TODO: set video port
         self.record_video = RecordVideo()
@@ -139,6 +141,9 @@ class MainWindow(QMainWindow):
         int_validator = QIntValidator()
         self.frame_jump_edit.setValidator(int_validator)
 
+        # trajectory checkbox
+        self.trajectory_checkBox.clicked.connect(self.on_trajectory_checkBox_click)
+
     def start_recording(self):
         filename, _ = QFileDialog.getOpenFileName(self, "Open Video")
         self.video_name = os.path.splitext(os.path.basename(filename))[0]
@@ -161,6 +166,9 @@ class MainWindow(QMainWindow):
             self.timestamp = 0
             self.record_video.start_recording(filename)
             print(f'self.total_frames: {self.total_frames}')
+
+            # reset trajectory data
+            self.center_points = []
 
             # load data from import data file
             # Check if the bounding box Excel file exists
@@ -201,6 +209,11 @@ class MainWindow(QMainWindow):
                     bboxes = [bboxes]
                 frame_with_bboxes = self.draw_bounding_boxes(image_data.copy(),
                                                              bboxes)  # Draw bounding boxes on the frame
+
+                if self.trajectory_checkBox.isChecked():
+                    # Draw trajectory
+                    frame_with_bboxes = self.draw_trajectory(frame_with_bboxes)
+
                 # show bbox position information
                 bbox_list = self.df.loc[self.timestamp].values.tolist()
                 if isinstance(bbox_list[0], float):
@@ -214,6 +227,10 @@ class MainWindow(QMainWindow):
 
             else:
                 frame_with_bboxes = image_data
+
+                if self.trajectory_checkBox.isChecked():
+                    # Draw trajectory
+                    frame_with_bboxes = self.draw_trajectory(frame_with_bboxes)
                 # reset text
                 self.label_count.setText('0 human head detected')
                 self.label_set.setText('')
@@ -269,7 +286,19 @@ class MainWindow(QMainWindow):
             x2 = int(x2)
             y1 = int(y1)
             y2 = int(y2)
+
+            cx = (x1 + x2) // 2
+            cy = (y1 + y2) // 2
+            # save trajectory data
+            self.center_points.append((cx, cy))
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)  # Draw bounding box
+
+        # Remove the first n elements from center_points after it reaches m elements
+        m = 100  # Define the threshold for m
+        n = 10  # Define the number of elements to remove
+        if len(self.center_points) > m:
+            self.center_points = self.center_points[n:]
+
         return frame
 
     # Resize and convert the image to a QImage
@@ -333,6 +362,8 @@ class MainWindow(QMainWindow):
             # Retrieve the text from the QLineEdit and convert it to an integer
             frame_number = int(self.frame_jump_edit.text())
             if frame_number <= self.total_frames:
+                # reset trajectory data
+                self.center_points = []
                 # Set the value of the QSlider to the frame number
                 self.frame_slider.setValue(frame_number)
         except ValueError:
@@ -357,6 +388,9 @@ class MainWindow(QMainWindow):
         self.bbox_excel_path = (f'{self.dir_path}\\bbox_save_files\\{self.video_name}_bounding_boxes_with_time'
                                 f'_{selected_excel_file}')
 
+        # reset trajectory data
+        self.center_points = []
+
         # reloading from the new Excel file
         # Check if the bounding box Excel file exists
         if not os.path.exists(self.bbox_excel_path):
@@ -366,6 +400,19 @@ class MainWindow(QMainWindow):
         self.df = pd.read_excel(self.bbox_excel_path, index_col=0)
 
         print(f'current version: {selected_excel_file}')
+
+    def on_trajectory_checkBox_click(self):
+        if self.trajectory_checkBox.isChecked():
+            print('trajectory checkBox is checked')
+        else:
+            print('trajectory checkBox is unchecked')
+
+    def draw_trajectory(self, frame):
+
+        for pt in self.center_points:
+            cv2.circle(frame, pt, 5, (0, 0, 255), -1)
+
+        return frame
 
 
 
