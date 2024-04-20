@@ -1,6 +1,5 @@
 import os
 import sys
-from os import path
 import cv2
 import numpy as np
 import pandas as pd
@@ -15,32 +14,38 @@ from PyQt5.QtWidgets import QApplication, QWidget, QToolBar, QVBoxLayout, QHBoxL
     QLabel, QMessageBox, QMainWindow, QStyle, QFileDialog, QSlider
 from PyQt5.QtCore import QSize, Qt, pyqtSignal, QUrl, QThread
 from PyQt5 import uic
-import threading
 
+import threading
 from ultralytics import YOLO
 import random
 
 
 class RecordVideo(QtCore.QObject):
     image_data = QtCore.pyqtSignal(np.ndarray)
+    time_count_signal = QtCore.pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.time_count = 0
         self.camera = None
         self.timer = QtCore.QTimer()
+        self.timer.setTimerType(Qt.PreciseTimer)
         self.paused = False  # Flag to track whether the video is paused or not
 
     def start_recording(self, filename):
+        self.time_count = 0
         self.camera = cv2.VideoCapture(filename)
-        self.timer.timeout.connect(self.read_frame)
-        self.timer.start(0)
+        self.timer.timeout.connect(self.read_frame)  # 設定定時要執行的 function
+        self.timer.start(0)  # 啟用定時器，設定間隔時間為 0 毫秒
         print('run_button.clicked')
 
     def read_frame(self):
         if not self.paused:
             read, data = self.camera.read()
             if read:
+                self.time_count += 1
                 self.image_data.emit(data)
+                self.time_count_signal.emit(self.time_count)
 
     def pause(self):
         self.paused = True
@@ -48,20 +53,57 @@ class RecordVideo(QtCore.QObject):
     def resume(self):
         self.paused = False
 
-    def timerEvent(self, event):
-        if event.timerId() != self.timer.timerId():
-            return
-
-        read, data = self.camera.read()
-        if read:
-            self.image_data.emit(data)
-
     def update_frame_based_on_timestamp(self, timestamp):
         self.camera.set(cv2.CAP_PROP_POS_FRAMES, timestamp)  # Set frame position
         read, data = self.camera.read()
         if read:
+            self.time_count = timestamp
             self.image_data.emit(data)
+            self.time_count_signal.emit(self.time_count)
 
+
+class WorkerThread(QtCore.QThread):
+    update_slider = QtCore.pyqtSignal()  # Signal to update slider position
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.timer = None
+        self.mutex = QtCore.QMutex()  # Mutex to control access to paused flag
+        self.paused = False
+
+    def run(self):
+        def work():
+            print("working from :" + str(threading.get_ident()))
+            QThread.sleep(5) # pauses the execution of the thread where it's called for 5 seconds
+
+        # This method will be executed in a separate thread
+        self.timer = QtCore.QTimer()
+        self.timer.setTimerType(Qt.PreciseTimer)
+        self.timer.timeout.connect(self.send_signal)
+        self.timer.timeout.connect(work)
+        self.timer.start(200)
+        print("thread started from :" + str(threading.get_ident()))
+        self.exec_()
+
+    def pause(self):
+        with QtCore.QMutexLocker(self.mutex):
+            self.paused = True
+            #self.timer.stop()
+
+    def resume(self):
+        with QtCore.QMutexLocker(self.mutex):
+            self.paused = False
+            #self.timer.start(200)
+
+    def stop(self):
+        self.timer.stop()  # 停止定時器
+        self.terminate()
+
+    def send_signal(self):
+        value = 10
+        if self.paused is False:
+            self.update_slider.emit()
+        print("send signal")
 
 
 class MainWindow(QMainWindow):
@@ -103,15 +145,20 @@ class MainWindow(QMainWindow):
         # Flag to indicate if video is restarted from frame 0
         self.video_restarted = False
         self.total_frames = 0
-        self.df = ''
+        self.df = None
 
         # initialize trajectory data
         self.center_points = []
+        # thread
+        self.worker = WorkerThread(self)
 
         # TODO: set video port
         self.record_video = RecordVideo()
-        image_data_slot = self.image_data_slot
-        self.record_video.image_data.connect(image_data_slot)
+        self.record_video.image_data.connect(self.image_data_slot)
+        # frame counting
+        self.record_video.time_count_signal.connect(self.time_count_slot)
+
+        self.worker.update_slider.connect(self.update_slider_position)#####
 
         self.setup_controll()
 
@@ -171,6 +218,9 @@ class MainWindow(QMainWindow):
             # reset trajectory data
             self.center_points = []
 
+            # start thread
+            self.worker.start()
+
             # load data from import data file
             # Check if the bounding box Excel file exists
             if not os.path.exists(self.bbox_excel_path):
@@ -180,9 +230,11 @@ class MainWindow(QMainWindow):
             # Read bounding box data from Excel with the first column as index
             self.df = pd.read_excel(self.bbox_excel_path, index_col=0)
 
-    def update_slider_position(self, timestamp): # not used
-        if timestamp <= self.total_frames:
-            self.frame_slider.setValue(timestamp)
+    def update_slider_position(self):  # Bottleneck
+        trajectory_data = self.center_points.copy()
+        if self.timestamp <= self.total_frames:
+            self.frame_slider.setValue(self.timestamp)
+        self.center_points = trajectory_data.copy()
 
     def slider_value_changed(self, value):
         # Update the frame shown on the GUI according to the slider value
@@ -191,17 +243,23 @@ class MainWindow(QMainWindow):
         # Call the method to update the frame based on the new timestamp
         self.record_video.update_frame_based_on_timestamp(self.timestamp)
 
-    # Detect circles/human head in the image and draw them
+    # Receive "time_count_signal" signal to increase timestamp
+    def time_count_slot(self, time_count):
+        self.timestamp = time_count
+        #if time_count <= self.total_frames:
+        #    self.frame_slider.setValue(time_count)
+
+        # set slider position per 100 frame
+        # if self.timestamp % 100 == 0:
+        #    self.frame_slider.setValue(self.timestamp)
+        print(f'time_count: {time_count}')
+
+    # Receive "image_data" signal from self.record_video and process the frame(image_data)
+    # Detect human head in the image and draw the bounding boxes
     def image_data_slot(self, image_data):
         try:
 
             self.label_frame.setText(f'frame: {self.timestamp}/{self.total_frames - 1}')
-            # set slider position per 100 frame
-            #if self.timestamp % 100 == 0:
-            #    self.frame_slider.setValue(self.timestamp)
-
-            if self.timestamp == self.total_frames - 1:
-                self.frame_slider.setValue(self.timestamp)
 
             # Reset timestamp if video is restarted from frame 0
             if self.video_restarted:
@@ -241,13 +299,8 @@ class MainWindow(QMainWindow):
                 self.label_count.setText('0 human head detected')
                 self.label_set.setText('')
                 self.label_bbox.setText('')
-                # cap_out.write(image_data)
 
             self.label_set.setText('[x1, y1, x2, y2, score]')
-            self.timestamp = self.timestamp + 1
-            print(f'timestamp:　{self.timestamp}')
-
-
             """""
             model = YOLO("best_20epoch.pt")
 
@@ -271,20 +324,21 @@ class MainWindow(QMainWindow):
                                   3)  # (self.colors[100 % len(self.colors)])
 
             """""
+            #print(f'timestamp:　{self.timestamp}')
+            #self.timestamp = self.timestamp + 1  # used before creating time_count_signal to set timestamp value
             self.image = self.get_qimage(frame_with_bboxes)
+
             # reset size
             # if self.image.size() != self.size():
             #    self.setFixedSize(self.image.size())
-
             self.update()
 
         except Exception as e:
-            print(f"Error in human head detection: {e}")
+            print(f"Error in image_data_slot: {e}")
 
     # Function to draw bounding boxes on the frame
     def draw_bounding_boxes(self, frame, bounding_boxes):
         print(f'bounding_boxes: {bounding_boxes}')
-        print(type(bounding_boxes[0]))
 
         for bbox in bounding_boxes:
             x1, y1, x2, y2, score = bbox  # Extracting coordinates
@@ -341,9 +395,11 @@ class MainWindow(QMainWindow):
         self.record_video.paused = not self.record_video.paused
         if self.record_video.paused:
             self.record_video.pause()
+            self.worker.pause()  # stop timer in thread
             self.pause_button.setText("Resume")
         else:
             self.record_video.resume()
+            self.worker.resume()  # resume/start timer in thread
             self.pause_button.setText("Pause")
 
     def get_video_length(self, video_path):
@@ -370,8 +426,10 @@ class MainWindow(QMainWindow):
             if frame_number <= self.total_frames:
                 # reset trajectory data
                 self.center_points = []
+                self.toggle_pause_resume()
                 # Set the value of the QSlider to the frame number
                 self.frame_slider.setValue(frame_number)
+                self.toggle_pause_resume()
         except ValueError:
             print("Invalid frame number entered.")
 
@@ -420,6 +478,11 @@ class MainWindow(QMainWindow):
             cv2.circle(frame, pt, 5, (0, 0, 255), -1)
 
         return frame
+
+    def closeEvent(self, event):
+        # Stop the worker thread before closing the application
+        self.worker.stop()
+        event.accept()
 
 
 if __name__ == '__main__':
