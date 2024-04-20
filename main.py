@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import QApplication, QWidget, QToolBar, QVBoxLayout, QHBoxL
     QLabel, QMessageBox, QMainWindow, QStyle, QFileDialog, QSlider
 from PyQt5.QtCore import QSize, Qt, pyqtSignal, QUrl, QThread
 from PyQt5 import uic
+import threading
 
 from ultralytics import YOLO
 import random
@@ -150,7 +151,7 @@ class MainWindow(QMainWindow):
 
         if filename:
             self.video_restarted = True
-            self.bbox_excel_path = f'{self.dir_path}\\bbox_save_files\\{self.video_name}_bounding_boxes_with_time_.xlsx'
+            self.bbox_excel_path = f'{self.dir_path}\\bbox_save_files\\{self.video_name}_bounding_boxes_with_time_v8.xlsx'
 
             # combobox
             # Clear the current items in the combobox
@@ -178,11 +179,15 @@ class MainWindow(QMainWindow):
 
             # Read bounding box data from Excel with the first column as index
             self.df = pd.read_excel(self.bbox_excel_path, index_col=0)
-            print(type(self.df))
+
+    def update_slider_position(self, timestamp): # not used
+        if timestamp <= self.total_frames:
+            self.frame_slider.setValue(timestamp)
 
     def slider_value_changed(self, value):
         # Update the frame shown on the GUI according to the slider value
         self.timestamp = value
+        self.center_points = []
         # Call the method to update the frame based on the new timestamp
         self.record_video.update_frame_based_on_timestamp(self.timestamp)
 
@@ -191,8 +196,9 @@ class MainWindow(QMainWindow):
         try:
 
             self.label_frame.setText(f'frame: {self.timestamp}/{self.total_frames - 1}')
-            if self.timestamp % 100 == 0:
-                self.frame_slider.setValue(self.timestamp)
+            # set slider position per 100 frame
+            #if self.timestamp % 100 == 0:
+            #    self.frame_slider.setValue(self.timestamp)
 
             if self.timestamp == self.total_frames - 1:
                 self.frame_slider.setValue(self.timestamp)
@@ -379,6 +385,7 @@ class MainWindow(QMainWindow):
             excel_files_versions.append(version_name[8])
         # Populate the combobox with the filtered list of Excel files
         self.excel_combobox.addItems(excel_files_versions)
+        self.excel_combobox.setCurrentText("v8.xlsx")
         self.excel_combobox.blockSignals(False)
 
     def handle_combobox_selection(self, index):
@@ -413,7 +420,6 @@ class MainWindow(QMainWindow):
             cv2.circle(frame, pt, 5, (0, 0, 255), -1)
 
         return frame
-
 
 
 if __name__ == '__main__':
