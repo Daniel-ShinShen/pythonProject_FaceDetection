@@ -15,6 +15,18 @@ from PyQt5.QtWidgets import QApplication, QWidget, QToolBar, QVBoxLayout, QHBoxL
 from PyQt5.QtCore import QSize, Qt, pyqtSignal, QUrl, QThread
 from PyQt5 import uic
 
+# count
+from collections import Counter
+from collections import deque
+import math
+
+import time
+
+# tracking
+# from deep_sort.utils.parser import get_config
+#from deep_sort.deep_sort import DeepSort
+#from deep_sort.sort.tracker import Tracker
+
 import threading
 from ultralytics import YOLO
 import random
@@ -139,16 +151,60 @@ class MainWindow(QMainWindow):
         self.dir_path = os.path.dirname(os.path.realpath(__file__))
         self.filename = ''
         self.bbox_excel_path = ''
-        self.video_out_path = ''
+        self.tracking_excel_path = ''
+        self.counting_excel_path = ''
+        #self.video_out_path = ''
 
         self.paused = False  # Flag to track whether the video is paused or not
         # Flag to indicate if video is restarted from frame 0
         self.video_restarted = False
         self.total_frames = 0
         self.df = None
+        self.df_tracking = None
+        self.df_counting = None
 
         # initialize trajectory data
         self.center_points = []
+
+        # tracking/people counting data
+        self.class_names = ['human_head', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
+                            'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
+                            'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
+                            'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
+                            'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
+                            'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+                            'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair',
+                            'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote',
+                            'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book',
+                            'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+
+        self.colors = np.array([
+            [1, 0, 1],
+            [0, 0, 1],
+            [0, 1, 1],
+            [0, 1, 0],
+            [1, 1, 0],
+            [1, 0, 0]
+        ])
+
+        self.paths = {}
+        self.total_counter = 0
+        self.down_count = 0
+        self.up_count = 0
+        self.counted_data_down = []
+        self.counted_data_up = []
+        self.last_track_id = -1
+        self.class_counter = Counter()  # store counts of each detected class
+        self.already_counted = deque(maxlen=15)  # temporary memory for storing counted IDs
+        self.line = []
+
+        self.label_person_count.setText('People Count:')
+        self.label_person_up.setText('People Upward:')
+        self.label_person_down.setText('People Downward:')
+
+        #deep_sort_weights = f'{self.dir_path}\\deep_sort\\deep\\checkpoint\\ckpt.t7'
+        #self.tracker = DeepSort(model_path=deep_sort_weights, max_age=3)
+
         # thread
         self.worker = WorkerThread(self)
 
@@ -189,8 +245,13 @@ class MainWindow(QMainWindow):
         int_validator = QIntValidator()
         self.frame_jump_edit.setValidator(int_validator)
 
-        # trajectory checkbox
+        # trajectory checkBox
         self.trajectory_checkBox.clicked.connect(self.on_trajectory_checkBox_click)
+        # people count checkBox
+        self.peoplecount_checkBox.clicked.connect(self.on_people_count_checkBox_click)
+        #bbox_checkBox
+        self.bbox_checkBox.setChecked(True)
+        self.bbox_checkBox.clicked.connect(self.on_bbox_checkBox_click)
 
     def start_recording(self):
         filename, _ = QFileDialog.getOpenFileName(self, "Open Video")
@@ -198,7 +259,12 @@ class MainWindow(QMainWindow):
 
         if filename:
             self.video_restarted = True
-            self.bbox_excel_path = f'{self.dir_path}\\bbox_save_files\\{self.video_name}_bounding_boxes_with_time_v8.xlsx'
+            self.bbox_excel_path = (f'{self.dir_path}\\bbox_save_files'
+                                    f'\\{self.video_name}_bounding_boxes_with_time_v8.xlsx')
+            self.tracking_excel_path = (f'{self.dir_path}\\tracking_save_files'
+                                        f'\\{self.video_name}_tracking_results_with_time.xlsx')
+            self.counting_excel_path = (f'{self.dir_path}\\counting_save_files'
+                                        f'\\{self.video_name}_people_counting_with_time.xlsx')
 
             # combobox
             # Clear the current items in the combobox
@@ -221,7 +287,7 @@ class MainWindow(QMainWindow):
             # start thread
             self.worker.start()
 
-            # load data from import data file
+            # load data from Excel data file
             # Check if the bounding box Excel file exists
             if not os.path.exists(self.bbox_excel_path):
                 print(self.bbox_excel_path)
@@ -229,6 +295,20 @@ class MainWindow(QMainWindow):
 
             # Read bounding box data from Excel with the first column as index
             self.df = pd.read_excel(self.bbox_excel_path, index_col=0)
+
+            # Check if the Tracking Excel file exists
+            if not os.path.exists(self.tracking_excel_path):
+                print(self.tracking_excel_path)
+                raise FileNotFoundError("Tracking Excel file not found.")
+
+            self.df_tracking = pd.read_excel(self.tracking_excel_path, index_col=0)
+
+            # Check if the Counting Excel file exists
+            if not os.path.exists(self.counting_excel_path):
+                print(self.counting_excel_path)
+                raise FileNotFoundError("Counting Excel file not found.")
+
+            self.df_counting = pd.read_excel(self.counting_excel_path, index_col=0)
 
     def update_slider_position(self):  # Bottleneck
         trajectory_data = self.center_points.copy()
@@ -258,7 +338,8 @@ class MainWindow(QMainWindow):
     # Detect human head in the image and draw the bounding boxes
     def image_data_slot(self, image_data):
         try:
-
+            bboxes_xywh = []
+            conf = []
             self.label_frame.setText(f'frame: {self.timestamp}/{self.total_frames - 1}')
 
             # Reset timestamp if video is restarted from frame 0
@@ -266,19 +347,31 @@ class MainWindow(QMainWindow):
                 self.timestamp = 0
                 self.video_restarted = False  # Reset the flag
 
-            if self.timestamp in self.df.index:  # Check if timestamp exists in the DataFrame
+            # draw line where people crossing (used for counting)
+            if self.peoplecount_checkBox.isChecked():
+                self.line = [(0, int(0.5 * image_data.shape[0])),
+                        (int(image_data.shape[1]), int(0.5 * image_data.shape[0]))]
+                line_y = int(0.5 * image_data.shape[0])
+                cv2.line(image_data, self.line[0], self.line[1], (255, 255, 0), 10)
+
+            if self.timestamp in self.df.index:  # Check if timestamp exists in the DataFrame(storing bounding boxes)
                 print(self.df.loc[self.timestamp].values.tolist())
                 bboxes = self.df.loc[self.timestamp].values.tolist()
+
                 if isinstance(bboxes[0], float):
                     bboxes = [bboxes]
+                # Draw bounding boxes on the frame # always do this
                 frame_with_bboxes = self.draw_bounding_boxes(image_data.copy(),
-                                                             bboxes)  # Draw bounding boxes on the frame
-
+                                                             bboxes)
+                # Draw trajectory
                 if self.trajectory_checkBox.isChecked():
-                    # Draw trajectory
                     frame_with_bboxes = self.draw_trajectory(frame_with_bboxes)
 
-                # show bbox position information
+                # Convert bboxes_xywh to numpy array
+                #bboxes_xywh = np.array(bboxes_xywh, dtype=float)
+                #conf = np.array(conf, dtype=float)
+
+                # Show bbox position information
                 bbox_list = self.df.loc[self.timestamp].values.tolist()
                 if isinstance(bbox_list[0], float):
                     bbox_list = [bbox_list]
@@ -299,6 +392,32 @@ class MainWindow(QMainWindow):
                 self.label_count.setText('0 human head detected')
                 self.label_set.setText('')
                 self.label_bbox.setText('')
+
+            # Check if timestamp exists in the DataFrame(storing tracking data)
+            if self.timestamp in self.df_tracking.index:
+                tracks = self.df_tracking.loc[self.timestamp].values.tolist()
+                # print('tracks: ', tracks)
+                if isinstance(tracks[0], float):
+                    tracks = [tracks]
+                # Draw tracking boxes on the frame
+                if self.peoplecount_checkBox.isChecked():
+                    frame_with_bboxes = self.draw_tracking_boxes(frame_with_bboxes.copy(), tracks)
+            else:
+                frame_with_bboxes = frame_with_bboxes
+
+            # Check if timestamp exists in the DataFrame(storing counting data)
+            if self.timestamp in self.df_counting.index:
+                counting = self.df_counting.loc[self.timestamp].values.tolist()
+                print('counting: ', counting)
+
+                if self.peoplecount_checkBox.isChecked():
+                    self.label_person_count.setText(f'People Count: {counting[0]}')
+                    self.label_person_up.setText(f'People Upward: {counting[1]}')
+                    self.label_person_down.setText(f'People Downward: {counting[2]}')
+                else:
+                    self.label_person_count.setText('People Count:')
+                    self.label_person_up.setText('People Upward:')
+                    self.label_person_down.setText('People Downward:')
 
             self.label_set.setText('[x1, y1, x2, y2, score]')
             """""
@@ -340,6 +459,8 @@ class MainWindow(QMainWindow):
     def draw_bounding_boxes(self, frame, bounding_boxes):
         print(f'bounding_boxes: {bounding_boxes}')
 
+        frame_processed = frame.copy()
+
         for bbox in bounding_boxes:
             x1, y1, x2, y2, score = bbox  # Extracting coordinates
             x1 = int(x1)
@@ -351,13 +472,67 @@ class MainWindow(QMainWindow):
             cy = (y1 + y2) // 2
             # save trajectory data
             self.center_points.append((cx, cy))
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)  # Draw bounding box
+            # show bounding boxes
+            if self.bbox_checkBox.isChecked():
+                frame_processed = cv2.rectangle(frame_processed, (x1, y1), (x2, y2), (0, 0, 255), 3)  # Draw bounding box
+            else:
+                frame_processed = frame_processed
 
         # Remove the first n elements from center_points after it reaches m elements
         m = 100  # Define the threshold for m
         n = 10  # Define the number of elements to remove
         if len(self.center_points) > m:
             self.center_points = self.center_points[n:]
+
+        return frame_processed
+
+    def draw_tracking_boxes(self, frame, tracks):
+        print(f'tracks: {tracks}')
+
+        for track in tracks:
+            x1, y1, x2, y2, track_id = track  # Extracting coordinates
+            x1 = int(x1)
+            x2 = int(x2)
+            y1 = int(y1)
+            y2 = int(y2)
+            midpoint = (int((x1 + x2) / 2), int((y1 + y2) / 2))
+            origin_midpoint = (midpoint[0], frame.shape[0] - midpoint[1])  # get midpoint respective to botton-left
+
+            color = self.compute_color_for_labels(track_id)
+            class_name = self.class_names[int(0)]  # all detected objects are human head
+
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)  # Draw bounding box
+            text_color = (0, 0, 0)  # Black color for text
+            cv2.putText(frame, f"{class_name}-{track_id}", (int(x1) + 10, int(y1) - 5), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, text_color, 2, cv2.LINE_AA)
+            if track_id not in self.paths:
+                self.paths[track_id] = deque(maxlen=2)
+                total_track = track_id
+
+            self.paths[track_id].append(midpoint)
+            previous_midpoint = self.paths[track_id][0]
+            origin_previous_midpoint = (previous_midpoint[0], frame.shape[0] - previous_midpoint[1])
+
+            if (self.intersect(midpoint, previous_midpoint, self.line[0], self.line[1])
+                    and track_id not in self.already_counted):
+                self.class_counter[0] += 1
+                # Update the person count
+                self.total_counter += 1
+                last_track_id = track_id
+
+                # draw red line
+                cv2.line(frame, self.line[0], self.line[1], (255, 150, 0), 10)
+
+                self.already_counted.append(track_id)  # Set already counted for ID to true.
+
+                angle = self.vector_angle(origin_midpoint, origin_previous_midpoint)
+                if angle > 0:
+                    self.up_count += 1
+                if angle < 0:
+                    self.down_count += 1
+
+            if len(self.paths) > 15:
+                del self.paths[list(self.paths)[0]]
 
         return frame
 
@@ -469,8 +644,31 @@ class MainWindow(QMainWindow):
     def on_trajectory_checkBox_click(self):
         if self.trajectory_checkBox.isChecked():
             print('trajectory checkBox is checked')
+
         else:
             print('trajectory checkBox is unchecked')
+
+    def on_people_count_checkBox_click(self):
+        if self.peoplecount_checkBox.isChecked():
+            print('people count checkBox is checked')
+            if self.timestamp in self.df_counting.index:
+                counting = self.df_counting.loc[self.timestamp].values.tolist()
+                print('counting: ', counting)
+                self.label_person_count.setText(f'People Count: {counting[0]}')
+                self.label_person_up.setText(f'People Upward: {counting[1]}')
+                self.label_person_down.setText(f'People Downward: {counting[2]}')
+        else:
+            print('people count checkBox is unchecked')
+            self.label_person_count.setText('People Count:')
+            self.label_person_up.setText('People Upward:')
+            self.label_person_down.setText('People Downward:')
+
+    def on_bbox_checkBox_click(self):
+        if self.bbox_checkBox.isChecked():
+            print('bbox checkBox is checked')
+        else:
+            print('bbox checkBox is unchecked')
+
 
     def draw_trajectory(self, frame):
 
@@ -478,6 +676,32 @@ class MainWindow(QMainWindow):
             cv2.circle(frame, pt, 5, (0, 0, 255), -1)
 
         return frame
+
+    def intersect(self, a, b, c, d):
+        return self.ccw(a, c, d) != self.ccw(b, c, d) and self.ccw(a, b, c) != self.ccw(a, b, d)
+
+    def ccw(self, A, B, C):
+        return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
+
+    def vector_angle(self, midpoint, previous_midpoint):
+        x = midpoint[0] - previous_midpoint[0]
+        y = midpoint[1] - previous_midpoint[1]
+        return math.degrees(math.atan2(y, x))
+
+    def get_color(self, c, x, max_value):
+        ratio = (x / max_value) * 5
+        i = math.floor(ratio)
+        j = math.ceil(ratio)
+        ratio -= i
+        r = (1 - ratio) * self.colors[i][c] + ratio * self.colors[j][c]
+        return r
+
+    def compute_color_for_labels(self, class_id, class_total=80):
+        offset = (class_id + 0) * 123457 % class_total
+        red = self.get_color(2, offset, class_total)
+        green = self.get_color(1, offset, class_total)
+        blue = self.get_color(0, offset, class_total)
+        return int(red * 256), int(green * 256), int(blue * 256)
 
     def closeEvent(self, event):
         # Stop the worker thread before closing the application
