@@ -30,30 +30,23 @@
     <item row="0" column="1" rowspan="2">
      <layout class="QVBoxLayout" name="verticalLayout_3">
       <item>
-       <widget class="QLabel" name="label">
+       <widget class="QLabel" name="label_person_count">
         <property name="text">
-         <string>bounding box information:</string>
+         <string>People Count: -</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QLabel" name="label_count">
+       <widget class="QLabel" name="label_person_up">
         <property name="text">
-         <string/>
+         <string>People Upward: -</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QLabel" name="label_set">
+       <widget class="QLabel" name="label_person_down">
         <property name="text">
-         <string/>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="label_bbox">
-        <property name="text">
-         <string/>
+         <string>People Downward: -</string>
         </property>
        </widget>
       </item>
@@ -73,25 +66,45 @@
       <item>
        <layout class="QVBoxLayout" name="verticalLayout_7">
         <item>
-         <widget class="QLabel" name="label_person_count">
+         <widget class="QLabel" name="label">
           <property name="text">
-           <string>People Count:</string>
+           <string>Bounding box information:</string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QLabel" name="label_person_up">
+         <widget class="QLabel" name="label_count">
           <property name="text">
-           <string>People Upward:</string>
+           <string/>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QLabel" name="label_person_down">
+         <widget class="QLabel" name="label_set">
           <property name="text">
-           <string>People Downward:</string>
+           <string/>
           </property>
          </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_bbox">
+          <property name="text">
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="verticalSpacer_2">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
         </item>
        </layout>
       </item>
@@ -148,21 +161,21 @@
         <item>
          <widget class="QCheckBox" name="bbox_checkBox">
           <property name="text">
-           <string>show bbox</string>
+           <string>Show bbox</string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QCheckBox" name="trajectory_checkBox">
           <property name="text">
-           <string>show trajectory</string>
+           <string>Show trajectory</string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QCheckBox" name="peoplecount_checkBox">
           <property name="text">
-           <string>show people count</string>
+           <string>Show people count</string>
           </property>
          </widget>
         </item>
@@ -173,7 +186,7 @@
         <item>
          <widget class="QLabel" name="label_2">
           <property name="text">
-           <string>set loading file:</string>
+           <string>Set loading file:</string>
           </property>
          </widget>
         </item>
@@ -206,7 +219,7 @@
            </size>
           </property>
           <property name="text">
-           <string>jump</string>
+           <string>Jump</string>
           </property>
          </widget>
         </item>

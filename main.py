@@ -7,7 +7,7 @@ import pandas as pd
 from PyQt5 import QtCore
 from PyQt5 import QtWidgets
 from PyQt5 import QtGui
-from PyQt5.QtGui import QPalette, QPixmap, QImage
+from PyQt5.QtGui import QPalette, QPixmap, QImage, QFont
 from PyQt5.QtGui import QIntValidator
 
 from PyQt5.QtWidgets import QApplication, QWidget, QToolBar, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton, QLabel, \
@@ -135,7 +135,7 @@ class MainWindow(QMainWindow):
         self.setPalette(p)
 
         # Create an image label for displaying video frames
-        self.paint_label.setGeometry(0, 0, 800, 800)
+        self.paint_label.setGeometry(0, 0, 850, 850)
         self.image = QtGui.QImage(self.paint_label.size(), QImage.Format_RGB32)
         self.image.fill(Qt.black)
         self.paint_label.setPixmap(QPixmap.fromImage(self.image))
@@ -197,6 +197,18 @@ class MainWindow(QMainWindow):
         self.class_counter = Counter()  # store counts of each detected class
         self.already_counted = deque(maxlen=15)  # temporary memory for storing counted IDs
         self.line = []
+        # set Font and Size of the label
+        self.label_person_count.setFont(QFont('Arial', 18))
+        self.label_person_count.resize(20, 50)
+        self.label_person_up.setFont(QFont('Arial', 18))
+        self.label_person_down.setFont(QFont('Arial', 18))
+
+        self.label.setFont(QFont('Arial', 13))
+        self.label_count.setFont(QFont('Arial', 13))
+        self.label_set.setFont(QFont('Arial', 13))
+        self.label_bbox.setFont(QFont('Arial', 13))
+        #self.label_bbox.resize(200, 120)
+        self.label_frame.setFont(QFont('Arial', 13))
 
         self.label_person_count.setText('People Count:')
         self.label_person_up.setText('People Upward:')
@@ -415,34 +427,12 @@ class MainWindow(QMainWindow):
                     self.label_person_up.setText(f'People Upward: {counting[1]}')
                     self.label_person_down.setText(f'People Downward: {counting[2]}')
                 else:
-                    self.label_person_count.setText('People Count:')
-                    self.label_person_up.setText('People Upward:')
-                    self.label_person_down.setText('People Downward:')
+                    self.label_person_count.setText('People Count: -')
+                    self.label_person_up.setText('People Upward: -')
+                    self.label_person_down.setText('People Downward: -')
 
             self.label_set.setText('[x1, y1, x2, y2, score]')
-            """""
-            model = YOLO("best_20epoch.pt")
 
-            results = model(image_data)
-            print(results)
-
-            for result in results:  # only one object inside results
-                detections = []
-                for r in result.boxes.data.tolist():
-                    print(r)
-                    x1, y1, x2, y2, score, class_id = r  # unwrap the information
-                    # read
-                    x1 = int(x1)
-                    x2 = int(x2)
-                    y1 = int(y1)
-                    y2 = int(y2)
-                    class_id = int(class_id)
-                    detections.append([x1, y1, x2, y2, score])
-
-                    cv2.rectangle(image_data, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255),
-                                  3)  # (self.colors[100 % len(self.colors)])
-
-            """""
             #print(f'timestamp:　{self.timestamp}')
             #self.timestamp = self.timestamp + 1  # used before creating time_count_signal to set timestamp value
             self.image = self.get_qimage(frame_with_bboxes)
@@ -541,7 +531,7 @@ class MainWindow(QMainWindow):
         height, width, colors = image.shape
 
         # Set the desired width for resizing
-        target_width = 800  # Adjust this value according to your preference
+        target_width = 850  # Adjust this value according to your preference
         # Calculate the corresponding height to maintain aspect ratio
         target_height = int(height * (target_width / width))
 
@@ -659,9 +649,9 @@ class MainWindow(QMainWindow):
                 self.label_person_down.setText(f'People Downward: {counting[2]}')
         else:
             print('people count checkBox is unchecked')
-            self.label_person_count.setText('People Count:')
-            self.label_person_up.setText('People Upward:')
-            self.label_person_down.setText('People Downward:')
+            self.label_person_count.setText('People Count: -')
+            self.label_person_up.setText('People Upward: -')
+            self.label_person_down.setText('People Downward: -')
 
     def on_bbox_checkBox_click(self):
         if self.bbox_checkBox.isChecked():
@@ -705,7 +695,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         # Stop the worker thread before closing the application
-        self.worker.stop()
+        if self.worker.isRunning():
+            self.worker.stop()
         event.accept()
 
 
