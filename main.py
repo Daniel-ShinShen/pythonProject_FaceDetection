@@ -48,7 +48,7 @@ class RecordVideo(QtCore.QObject):
         self.time_count = 0
         self.camera = cv2.VideoCapture(filename)
         self.timer.timeout.connect(self.read_frame)  # 設定定時要執行的 function
-        self.timer.start(0)  # 啟用定時器，設定間隔時間為 0 毫秒
+        self.timer.start(8)  # 啟用定時器，設定間隔時間為 0 毫秒
         print('run_button.clicked')
 
     def read_frame(self):
@@ -135,7 +135,7 @@ class MainWindow(QMainWindow):
         self.setPalette(p)
 
         # Create an image label for displaying video frames
-        self.paint_label.setGeometry(0, 0, 850, 850)
+        self.paint_label.setGeometry(0, 0, 840, 840)
         self.image = QtGui.QImage(self.paint_label.size(), QImage.Format_RGB32)
         self.image.fill(Qt.black)
         self.paint_label.setPixmap(QPixmap.fromImage(self.image))
@@ -162,6 +162,9 @@ class MainWindow(QMainWindow):
         self.df = None
         self.df_tracking = None
         self.df_counting = None
+
+        self.consecutive_no_detection_count = 0
+        self.max_consecutive_no_detection_frames = 20  # Set the threshold
 
         # initialize trajectory data
         self.center_points = []
@@ -273,6 +276,7 @@ class MainWindow(QMainWindow):
             self.video_restarted = True
             self.bbox_excel_path = (f'{self.dir_path}\\bbox_save_files'
                                     f'\\{self.video_name}_bounding_boxes_with_time_v8.xlsx')
+            print("self.bbox_excel_path:", self.bbox_excel_path)
             self.tracking_excel_path = (f'{self.dir_path}\\tracking_save_files'
                                         f'\\{self.video_name}_tracking_results_with_time.xlsx')
             self.counting_excel_path = (f'{self.dir_path}\\counting_save_files'
@@ -354,6 +358,7 @@ class MainWindow(QMainWindow):
             conf = []
             self.label_frame.setText(f'frame: {self.timestamp}/{self.total_frames - 1}')
 
+
             # Reset timestamp if video is restarted from frame 0
             if self.video_restarted:
                 self.timestamp = 0
@@ -369,6 +374,7 @@ class MainWindow(QMainWindow):
             if self.timestamp in self.df.index:  # Check if timestamp exists in the DataFrame(storing bounding boxes)
                 print(self.df.loc[self.timestamp].values.tolist())
                 bboxes = self.df.loc[self.timestamp].values.tolist()
+                self.consecutive_no_detection_count = 0
 
                 if isinstance(bboxes[0], float):
                     bboxes = [bboxes]
@@ -396,6 +402,7 @@ class MainWindow(QMainWindow):
 
             else:
                 frame_with_bboxes = image_data
+                self.consecutive_no_detection_count += 1
 
                 if self.trajectory_checkBox.isChecked():
                     # Draw trajectory
@@ -404,6 +411,9 @@ class MainWindow(QMainWindow):
                 self.label_count.setText('0 human head detected')
                 self.label_set.setText('')
                 self.label_bbox.setText('')
+
+            if self.consecutive_no_detection_count >= self.max_consecutive_no_detection_frames:
+                self.center_points = []
 
             # Check if timestamp exists in the DataFrame(storing tracking data)
             if self.timestamp in self.df_tracking.index:
@@ -531,9 +541,11 @@ class MainWindow(QMainWindow):
         height, width, colors = image.shape
 
         # Set the desired width for resizing
-        target_width = 850  # Adjust this value according to your preference
+        #target_width = 850  # Adjust this value according to your preference
+        target_height = 840
         # Calculate the corresponding height to maintain aspect ratio
-        target_height = int(height * (target_width / width))
+        #target_height = int(height * (target_width / width))
+        target_width = int(width * (target_height / height))
 
         # Resize the image
         resized_image = cv2.resize(image, (target_width, target_height))
