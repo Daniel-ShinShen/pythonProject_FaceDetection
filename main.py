@@ -127,7 +127,7 @@ class MainWindow(QMainWindow):
         uic.loadUi("mainwindow.ui", self)
 
         # Set window properties
-        self.setWindowTitle("Human Head Detection GUI")
+        self.setWindowTitle("People Tracking and Counting GUI")
         self.setWindowIcon(QtGui.QIcon('logo.png'))
         # self.setFixedSize(QSize(800, 850))
         p = self.palette()
@@ -135,7 +135,7 @@ class MainWindow(QMainWindow):
         self.setPalette(p)
 
         # Create an image label for displaying video frames
-        self.paint_label.setGeometry(0, 0, 840, 840)
+        self.paint_label.setGeometry(0, 0, 830, 830)
         self.image = QtGui.QImage(self.paint_label.size(), QImage.Format_RGB32)
         self.image.fill(Qt.black)
         self.paint_label.setPixmap(QPixmap.fromImage(self.image))
@@ -168,6 +168,8 @@ class MainWindow(QMainWindow):
 
         # initialize trajectory data
         self.center_points = []
+        self.upward_points = []
+        self.downward_points = []
 
         # tracking/people counting data
         self.class_names = ['human_head', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
@@ -194,17 +196,21 @@ class MainWindow(QMainWindow):
         self.total_counter = 0
         self.down_count = 0
         self.up_count = 0
-        self.counted_data_down = []
-        self.counted_data_up = []
         self.last_track_id = -1
         self.class_counter = Counter()  # store counts of each detected class
         self.already_counted = deque(maxlen=15)  # temporary memory for storing counted IDs
         self.line = []
+        self.already_counted_up = deque(maxlen=15)  # temporary memory for storing counted IDs: upward
+        self.already_counted_down = deque(maxlen=15)  # temporary memory for storing counted IDs: downward
         # set Font and Size of the label
         self.label_person_count.setFont(QFont('Arial', 18))
         self.label_person_count.resize(20, 50)
         self.label_person_up.setFont(QFont('Arial', 18))
         self.label_person_down.setFont(QFont('Arial', 18))
+
+        self.label_up.setFont(QFont('Arial', 18))
+        self.label_down.setFont(QFont('Arial', 18))
+        self.label_total_count.setFont(QFont('Arial', 18))
 
         self.label.setFont(QFont('Arial', 13))
         self.label_count.setFont(QFont('Arial', 13))
@@ -213,9 +219,14 @@ class MainWindow(QMainWindow):
         #self.label_bbox.resize(200, 120)
         self.label_frame.setFont(QFont('Arial', 13))
 
-        self.label_person_count.setText('People Count:')
-        self.label_person_up.setText('People Upward:')
-        self.label_person_down.setText('People Downward:')
+        #self.label_person_count.setText('People Count:')
+        #self.label_person_up.setText('People Upward:')
+        #self.label_person_down.setText('People Downward:')
+        self.label_total_count.setText('Total Count:')
+        self.label_up.setText('People Upward:')
+        self.label_down.setText('People Downward:')
+
+        self.peoplecount_checkBox.setEnabled(False)
 
         #deep_sort_weights = f'{self.dir_path}\\deep_sort\\deep\\checkpoint\\ckpt.t7'
         #self.tracker = DeepSort(model_path=deep_sort_weights, max_age=3)
@@ -299,6 +310,12 @@ class MainWindow(QMainWindow):
 
             # reset trajectory data
             self.center_points = []
+            self.upward_points = []
+            self.downward_points = []
+            self.already_counted.clear()
+            self.already_counted_up.clear()
+            self.already_counted_down.clear()
+            self.peoplecount_checkBox.setEnabled(True)
 
             # start thread
             self.worker.start()
@@ -358,16 +375,15 @@ class MainWindow(QMainWindow):
             conf = []
             self.label_frame.setText(f'frame: {self.timestamp}/{self.total_frames - 1}')
 
-
             # Reset timestamp if video is restarted from frame 0
             if self.video_restarted:
                 self.timestamp = 0
                 self.video_restarted = False  # Reset the flag
 
             # draw line where people crossing (used for counting)
+            self.line = [(0, int(0.5 * image_data.shape[0])),
+                         (int(image_data.shape[1]), int(0.5 * image_data.shape[0]))]
             if self.peoplecount_checkBox.isChecked():
-                self.line = [(0, int(0.5 * image_data.shape[0])),
-                        (int(image_data.shape[1]), int(0.5 * image_data.shape[0]))]
                 line_y = int(0.5 * image_data.shape[0])
                 cv2.line(image_data, self.line[0], self.line[1], (255, 255, 0), 10)
 
@@ -414,16 +430,22 @@ class MainWindow(QMainWindow):
 
             if self.consecutive_no_detection_count >= self.max_consecutive_no_detection_frames:
                 self.center_points = []
+                self.upward_points = []
+                self.downward_points = []
+                self.already_counted.clear()
+                self.already_counted_up.clear()
+                self.already_counted_down.clear()
 
             # Check if timestamp exists in the DataFrame(storing tracking data)
             if self.timestamp in self.df_tracking.index:
                 tracks = self.df_tracking.loc[self.timestamp].values.tolist()
-                # print('tracks: ', tracks)
+                print('tracks: ', tracks)
                 if isinstance(tracks[0], float):
                     tracks = [tracks]
+
                 # Draw tracking boxes on the frame
-                if self.peoplecount_checkBox.isChecked():
-                    frame_with_bboxes = self.draw_tracking_boxes(frame_with_bboxes.copy(), tracks)
+                #if self.peoplecount_checkBox.isChecked():
+                frame_with_bboxes = self.draw_tracking_boxes(frame_with_bboxes.copy(), tracks)
             else:
                 frame_with_bboxes = frame_with_bboxes
 
@@ -433,13 +455,13 @@ class MainWindow(QMainWindow):
                 print('counting: ', counting)
 
                 if self.peoplecount_checkBox.isChecked():
-                    self.label_person_count.setText(f'People Count: {counting[0]}')
-                    self.label_person_up.setText(f'People Upward: {counting[1]}')
-                    self.label_person_down.setText(f'People Downward: {counting[2]}')
+                    self.label_person_count.setText(f'{counting[0]}')
+                    self.label_person_up.setText(f'{counting[1]}')
+                    self.label_person_down.setText(f'{counting[2]}')
                 else:
-                    self.label_person_count.setText('People Count: -')
-                    self.label_person_up.setText('People Upward: -')
-                    self.label_person_down.setText('People Downward: -')
+                    self.label_person_count.setText('-')
+                    self.label_person_up.setText('-')
+                    self.label_person_down.setText('-')
 
             self.label_set.setText('[x1, y1, x2, y2, score]')
 
@@ -501,17 +523,23 @@ class MainWindow(QMainWindow):
             color = self.compute_color_for_labels(track_id)
             class_name = self.class_names[int(0)]  # all detected objects are human head
 
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)  # Draw bounding box
-            text_color = (0, 0, 0)  # Black color for text
-            cv2.putText(frame, f"{class_name}-{track_id}", (int(x1) + 10, int(y1) - 5), cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5, text_color, 2, cv2.LINE_AA)
+            if self.peoplecount_checkBox.isChecked():
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)  # Draw bounding box
+                text_color = (0, 0, 0)  # Black color for text
+                cv2.putText(frame, f"{class_name}-{track_id}", (int(x1) + 10, int(y1) - 5), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5, text_color, 2, cv2.LINE_AA)
             if track_id not in self.paths:
                 self.paths[track_id] = deque(maxlen=2)
-                total_track = track_id
 
             self.paths[track_id].append(midpoint)
             previous_midpoint = self.paths[track_id][0]
             origin_previous_midpoint = (previous_midpoint[0], frame.shape[0] - previous_midpoint[1])
+            # for drawing trajectory
+            if track_id in self.already_counted_up:
+                self.upward_points.append(midpoint)
+
+            elif track_id in self.already_counted_down:
+                self.downward_points.append(midpoint)
 
             if (self.intersect(midpoint, previous_midpoint, self.line[0], self.line[1])
                     and track_id not in self.already_counted):
@@ -520,16 +548,30 @@ class MainWindow(QMainWindow):
                 self.total_counter += 1
                 last_track_id = track_id
 
-                # draw red line
-                cv2.line(frame, self.line[0], self.line[1], (255, 150, 0), 10)
+                # draw people counting line
+                if self.peoplecount_checkBox.isChecked():
+                    cv2.line(frame, self.line[0], self.line[1], (255, 150, 0), 10)
 
                 self.already_counted.append(track_id)  # Set already counted for ID to true.
 
                 angle = self.vector_angle(origin_midpoint, origin_previous_midpoint)
                 if angle > 0:
                     self.up_count += 1
+                    # trajectory
+                    self.already_counted_up.append(track_id)
                 if angle < 0:
                     self.down_count += 1
+                    # trajectory
+                    self.already_counted_down.append(track_id)
+
+
+            # Remove the first n elements from upward/downward_points after it reaches m elements
+            m = 300  # Define the threshold for m
+            n = 10  # Define the number of elements to remove
+            if len(self.upward_points) > m:
+                self.upward_points = self.upward_points[n:]
+            if len(self.downward_points) > m:
+                self.downward_points = self.downward_points[n:]
 
             if len(self.paths) > 15:
                 del self.paths[list(self.paths)[0]]
@@ -542,7 +584,7 @@ class MainWindow(QMainWindow):
 
         # Set the desired width for resizing
         #target_width = 850  # Adjust this value according to your preference
-        target_height = 840
+        target_height = 830
         # Calculate the corresponding height to maintain aspect ratio
         #target_height = int(height * (target_width / width))
         target_width = int(width * (target_height / height))
@@ -603,6 +645,9 @@ class MainWindow(QMainWindow):
             if frame_number <= self.total_frames:
                 # reset trajectory data
                 self.center_points = []
+                self.upward_points = []
+                self.downward_points = []
+                self.already_counted.clear()
                 self.toggle_pause_resume()
                 # Set the value of the QSlider to the frame number
                 self.frame_slider.setValue(frame_number)
@@ -632,6 +677,9 @@ class MainWindow(QMainWindow):
 
         # reset trajectory data
         self.center_points = []
+        self.upward_points = []
+        self.downward_points = []
+        self.already_counted.clear()
 
         # reloading from the new Excel file
         # Check if the bounding box Excel file exists
@@ -655,15 +703,15 @@ class MainWindow(QMainWindow):
             print('people count checkBox is checked')
             if self.timestamp in self.df_counting.index:
                 counting = self.df_counting.loc[self.timestamp].values.tolist()
-                print('counting: ', counting)
-                self.label_person_count.setText(f'People Count: {counting[0]}')
-                self.label_person_up.setText(f'People Upward: {counting[1]}')
-                self.label_person_down.setText(f'People Downward: {counting[2]}')
+                #print('counting: ', counting)
+                self.label_person_count.setText(f'{counting[0]}')
+                self.label_person_up.setText(f'{counting[1]}')
+                self.label_person_down.setText(f'{counting[2]}')
         else:
             print('people count checkBox is unchecked')
-            self.label_person_count.setText('People Count: -')
-            self.label_person_up.setText('People Upward: -')
-            self.label_person_down.setText('People Downward: -')
+            self.label_person_count.setText('-')
+            self.label_person_up.setText('-')
+            self.label_person_down.setText('-')
 
     def on_bbox_checkBox_click(self):
         if self.bbox_checkBox.isChecked():
@@ -676,6 +724,12 @@ class MainWindow(QMainWindow):
 
         for pt in self.center_points:
             cv2.circle(frame, pt, 5, (0, 0, 255), -1)
+
+        for pt in self.upward_points:
+            cv2.circle(frame, pt, 5, (50, 250, 200), -1)
+
+        for pt in self.downward_points:
+            cv2.circle(frame, pt, 5, (255, 80, 20), -1)
 
         return frame
 
