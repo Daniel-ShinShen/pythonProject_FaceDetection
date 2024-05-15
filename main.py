@@ -254,6 +254,7 @@ class MainWindow(QMainWindow):
         # Create an empty list to store tracking information
         self.tracking_results = []
         self.counting_results = []
+        self.prev_timestamp = -1
 
 
         # TODO: set video port
@@ -383,6 +384,7 @@ class MainWindow(QMainWindow):
                 self.tracking_results = []
                 self.counting_results = []
                 self.consecutive_no_detection_count = 0
+                self.prev_timestamp = -1
                 # start thread
                 self.worker.start()
 
@@ -396,6 +398,7 @@ class MainWindow(QMainWindow):
         # Update the frame shown on the GUI according to the slider value
         self.timestamp = value
         self.center_points = []
+        self.paths = {} ###
         # Call the method to update the frame based on the new timestamp
         self.record_video.update_frame_based_on_timestamp(self.timestamp)
 
@@ -666,8 +669,11 @@ class MainWindow(QMainWindow):
 
                 if len(self.paths) > 15:
                     del self.paths[list(self.paths)[0]]
+            # check if timestamp data repeated
+            if self.prev_timestamp < self.timestamp:
+                self.counting_results.append([self.timestamp, self.total_counter, self.up_count, self.down_count])
+                self.prev_timestamp = self.timestamp
 
-            self.counting_results.append([self.timestamp, self.total_counter, self.up_count, self.down_count])
             self.label_person_count.setText(f'{self.total_counter}')
             self.label_person_up.setText(f'{self.up_count}')
             self.label_person_down.setText(f'{self.down_count}')
