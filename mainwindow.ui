@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>460</width>
+    <width>541</width>
     <height>393</height>
    </rect>
   </property>
@@ -256,7 +256,17 @@
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout_2">
         <item>
+         <widget class="QCheckBox" name="load_excel_checkBox">
+          <property name="text">
+           <string>Load excel file</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QLabel" name="label_2">
+          <property name="autoFillBackground">
+           <bool>false</bool>
+          </property>
           <property name="text">
            <string>Set loading file:</string>
           </property>
@@ -269,6 +279,9 @@
       </item>
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout">
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
         <item>
          <widget class="QLineEdit" name="frame_jump_edit">
           <property name="maximumSize">
@@ -317,7 +330,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>460</width>
+     <width>541</width>
      <height>18</height>
     </rect>
    </property>

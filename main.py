@@ -24,8 +24,8 @@ import time
 
 # tracking
 # from deep_sort.utils.parser import get_config
-#from deep_sort.deep_sort import DeepSort
-#from deep_sort.sort.tracker import Tracker
+from deep_sort.deep_sort import DeepSort
+from deep_sort.sort.tracker import Tracker
 
 import threading
 from ultralytics import YOLO
@@ -35,6 +35,7 @@ import random
 class RecordVideo(QtCore.QObject):
     image_data = QtCore.pyqtSignal(np.ndarray)
     time_count_signal = QtCore.pyqtSignal(int)
+    finish_signal = QtCore.pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -58,6 +59,8 @@ class RecordVideo(QtCore.QObject):
                 self.time_count += 1
                 self.image_data.emit(data)
                 self.time_count_signal.emit(self.time_count)
+            else:
+                self.finish_signal.emit(self.time_count)
 
     def pause(self):
         self.paused = True
@@ -73,7 +76,7 @@ class RecordVideo(QtCore.QObject):
             self.image_data.emit(data)
             self.time_count_signal.emit(self.time_count)
 
-
+# Thread to update slider position
 class WorkerThread(QtCore.QThread):
     update_slider = QtCore.pyqtSignal()  # Signal to update slider position
 
@@ -193,9 +196,12 @@ class MainWindow(QMainWindow):
         ])
 
         self.paths = {}
+
+        # Storing people counting value
         self.total_counter = 0
         self.down_count = 0
         self.up_count = 0
+
         self.last_track_id = -1
         self.class_counter = Counter()  # store counts of each detected class
         self.already_counted = deque(maxlen=15)  # temporary memory for storing counted IDs
@@ -228,17 +234,35 @@ class MainWindow(QMainWindow):
 
         self.peoplecount_checkBox.setEnabled(False)
 
-        #deep_sort_weights = f'{self.dir_path}\\deep_sort\\deep\\checkpoint\\ckpt.t7'
-        #self.tracker = DeepSort(model_path=deep_sort_weights, max_age=3)
+        deep_sort_weights = f'{self.dir_path}\\deep_sort\\deep\\checkpoint\\ckpt.t7'
+        self.tracker = DeepSort(model_path=deep_sort_weights, max_age=3)
 
         # thread
         self.worker = WorkerThread(self)
+
+        # model
+        self.model = YOLO(f'{self.dir_path}\\model'
+                          f'\\best_v8_20240412.pt')
+
+        # No loading Excel file case
+        # Create an empty list to store bounding box information
+        self.bounding_boxes = []
+        self.detection_threshold = 0.5
+        self.success_loaded = False
+        self.consecutive_no_detection_count = 0
+        self.max_consecutive_no_detection_frames = 3  # Set the threshold
+        # Create an empty list to store tracking information
+        self.tracking_results = []
+        self.counting_results = []
+
 
         # TODO: set video port
         self.record_video = RecordVideo()
         self.record_video.image_data.connect(self.image_data_slot)
         # frame counting
         self.record_video.time_count_signal.connect(self.time_count_slot)
+        # If not loading Excel file, we should check finish or not and save Excel file
+        self.record_video.finish_signal.connect(self.finish_slot)
 
         self.worker.update_slider.connect(self.update_slider_position)#####
 
@@ -275,9 +299,11 @@ class MainWindow(QMainWindow):
         self.trajectory_checkBox.clicked.connect(self.on_trajectory_checkBox_click)
         # people count checkBox
         self.peoplecount_checkBox.clicked.connect(self.on_people_count_checkBox_click)
-        #bbox_checkBox
+        # bbox_checkBox
         self.bbox_checkBox.setChecked(True)
         self.bbox_checkBox.clicked.connect(self.on_bbox_checkBox_click)
+        # load excel file initial setting
+        self.load_excel_checkBox.setChecked(True)
 
     def start_recording(self):
         filename, _ = QFileDialog.getOpenFileName(self, "Open Video")
@@ -309,6 +335,7 @@ class MainWindow(QMainWindow):
             print(f'self.total_frames: {self.total_frames}')
 
             # reset trajectory data
+            self.paths = {}
             self.center_points = []
             self.upward_points = []
             self.downward_points = []
@@ -317,31 +344,47 @@ class MainWindow(QMainWindow):
             self.already_counted_down.clear()
             self.peoplecount_checkBox.setEnabled(True)
 
-            # start thread
-            self.worker.start()
-
             # load data from Excel data file
-            # Check if the bounding box Excel file exists
-            if not os.path.exists(self.bbox_excel_path):
-                print(self.bbox_excel_path)
-                raise FileNotFoundError("Bounding box Excel file not found.")
+            if self.load_excel_checkBox.isChecked():
+                try:
+                    # Check if the bounding box Excel file exists
+                    if not os.path.exists(self.bbox_excel_path):
+                        print(self.bbox_excel_path)
+                        self.success_loaded = False
+                        raise FileNotFoundError("Bounding box Excel file not found.")
 
-            # Read bounding box data from Excel with the first column as index
-            self.df = pd.read_excel(self.bbox_excel_path, index_col=0)
+                    # Read bounding box data from Excel with the first column as index
+                    self.df = pd.read_excel(self.bbox_excel_path, index_col=0)
 
-            # Check if the Tracking Excel file exists
-            if not os.path.exists(self.tracking_excel_path):
-                print(self.tracking_excel_path)
-                raise FileNotFoundError("Tracking Excel file not found.")
+                    # Check if the Tracking Excel file exists
+                    if not os.path.exists(self.tracking_excel_path):
+                        print(self.tracking_excel_path)
+                        self.success_loaded = False
+                        raise FileNotFoundError("Tracking Excel file not found.")
 
-            self.df_tracking = pd.read_excel(self.tracking_excel_path, index_col=0)
+                    self.df_tracking = pd.read_excel(self.tracking_excel_path, index_col=0)
 
-            # Check if the Counting Excel file exists
-            if not os.path.exists(self.counting_excel_path):
-                print(self.counting_excel_path)
-                raise FileNotFoundError("Counting Excel file not found.")
+                    # Check if the Counting Excel file exists
+                    if not os.path.exists(self.counting_excel_path):
+                        print(self.counting_excel_path)
+                        self.success_loaded = False
+                        raise FileNotFoundError("Counting Excel file not found.")
+                    else:
+                        self.df_counting = pd.read_excel(self.counting_excel_path, index_col=0)
+                        self.success_loaded = True
+                        # start thread
+                        self.worker.start()
+                except Exception as e:
+                    print(f"Failed to load Excel data file: {e}")
 
-            self.df_counting = pd.read_excel(self.counting_excel_path, index_col=0)
+            else:
+                self.peoplecount_checkBox.setEnabled(False)
+                self.bounding_boxes = []
+                self.tracking_results = []
+                self.counting_results = []
+                self.consecutive_no_detection_count = 0
+                # start thread
+                self.worker.start()
 
     def update_slider_position(self):  # Bottleneck
         trajectory_data = self.center_points.copy()
@@ -367,13 +410,50 @@ class MainWindow(QMainWindow):
         #    self.frame_slider.setValue(self.timestamp)
         print(f'time_count: {time_count}')
 
+    def finish_slot(self, time_count):
+        if not self.load_excel_checkBox.isChecked():
+            # Convert bounding_boxes list to DataFrame
+            self.df = pd.DataFrame(self.bounding_boxes, columns=['timestamp', 'x1', 'y1', 'x2', 'y2', 'score'])
+            # Save DataFrame to Excel file
+            self.df.to_excel(self.bbox_excel_path, index=False)
+
+            # Convert list to DataFrame-tracking
+            self.df_tracking = pd.DataFrame(self.tracking_results, columns=['timestamp', 'x1', 'y1', 'x2', 'y2', 'track_id'])
+            # Save DataFrame to Excel file
+            self.df_tracking.to_excel(self.tracking_excel_path, index=False)
+
+            # Convert list to DataFrame-people counting
+            self.df_counting = pd.DataFrame(self.counting_results, columns=['timestamp', 'total_counter', 'up_count', 'down_count'])
+            # Save DataFrame to Excel file
+            self.df_counting.to_excel(self.counting_excel_path, index=False)
+
+            self.label_frame.setText(f'Finishing saving excel file.')
+            self.peoplecount_checkBox.setEnabled(True)
+            print("Finish saving excel file.")
+        self.label_frame.setText(f'frame number: {self.timestamp}/{time_count}')
+
+
     # Receive "image_data" signal from self.record_video and process the frame(image_data)
     # Detect human head in the image and draw the bounding boxes
     def image_data_slot(self, image_data):
         try:
+            if self.load_excel_checkBox.isChecked():
+                self.process_frames_with_excel(image_data)
+            else:
+                # using model
+                self.process_frames_without_excel(image_data)
+        except Exception as e:
+            print(f"Error in image_data_slot: {e}")
+
+    # Detect human head in the image and draw the bounding boxes
+    def process_frames_with_excel(self, image_data):
+        try:
             bboxes_xywh = []
             conf = []
-            self.label_frame.setText(f'frame: {self.timestamp}/{self.total_frames - 1}')
+            if self.success_loaded:
+                self.label_frame.setText(f'frame number: {self.timestamp}/{self.total_frames - 1}')
+            else:
+                self.label_frame.setText(f'Failed to load excel file.')
 
             # Reset timestamp if video is restarted from frame 0
             if self.video_restarted:
@@ -452,6 +532,10 @@ class MainWindow(QMainWindow):
             # Check if timestamp exists in the DataFrame(storing counting data)
             if self.timestamp in self.df_counting.index:
                 counting = self.df_counting.loc[self.timestamp].values.tolist()
+                if not isinstance(counting[0], int):
+                    print("double marked...")
+                    counting = counting[0]
+
                 print('counting: ', counting)
 
                 if self.peoplecount_checkBox.isChecked():
@@ -475,7 +559,124 @@ class MainWindow(QMainWindow):
             self.update()
 
         except Exception as e:
-            print(f"Error in image_data_slot: {e}")
+            print(f"Error in process_frames_with_excel: {e}")
+
+    def process_frames_without_excel(self, image_data):
+        try:
+            bboxes_xywh = []
+            conf = []
+            self.label_frame.setText(f'Processing frame number: {self.timestamp}/{self.total_frames - 1}')
+            results = self.model(image_data)
+            for result in results:
+                print("length of r: ", len(result.boxes.data.tolist()))
+                self.label_count.setText(f'{len(result.boxes.data.tolist())} human head(s) detected')
+                if len(result.boxes.data.tolist()) <= 0:
+                    self.consecutive_no_detection_count += 1
+                else:
+                    self.consecutive_no_detection_count = 0
+
+                for r in result.boxes.data.tolist():
+                    x1, y1, x2, y2, score, class_id = r  # unwrap the information
+                    # read
+                    x1 = int(x1)
+                    x2 = int(x2)
+                    y1 = int(y1)
+                    y2 = int(y2)
+                    x = int((x1 + x2) // 2)
+                    y = int((y1 + y2) // 2)
+                    w = max(int(x2 - x1), 0)
+                    h = max(int(y2 - y1), 0)
+
+                    if score > self.detection_threshold:
+                        self.bounding_boxes.append([self.timestamp, x1, y1, x2, y2, score])
+                        bboxes_xywh.append([x, y, w, h])
+                        conf.append([score])
+                        if self.bbox_checkBox.isChecked():
+                            cv2.rectangle(image_data, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 3)
+
+            # Convert bboxes_xywh to numpy array
+            bboxes_xywh = np.array(bboxes_xywh)
+            conf = np.array(conf)
+
+            tracks = self.tracker.update(bboxes_xywh, conf, image_data)  # Update tracks with detected bounding
+            # boxes, need 4K resolution
+
+            # 1.视频中间画行黄线
+            self.line = [(0, int(0.5 * image_data.shape[0])), (int(image_data.shape[1]), int(0.5 * image_data.shape[0]))]
+            line_y = int(0.5 * image_data.shape[0])
+            cv2.line(image_data, self.line[0], self.line[1], (255, 255, 0), 10)
+
+            # 2. 统计人数
+            for track in self.tracker.tracker.tracks:
+                track_id = track.track_id
+                hits = track.hits
+                x1, y1, x2, y2 = track.to_tlbr()  # Get bounding box coordinates in (x1, y1, x2, y2) format
+                w = x2 - x1  # Calculate width
+                h = y2 - y1  # Calculate height
+                midpoint = (int((x1 + x2) / 2), int((y1 + y2) / 2))
+                origin_midpoint = (midpoint[0], image_data.shape[0] - midpoint[1])  # get midpoint respective to botton-left
+                color = self.compute_color_for_labels(track_id)
+                class_name = self.class_names[int(0)]  # all detected objects are human head
+
+                # 绘制人员
+                if self.consecutive_no_detection_count < self.max_consecutive_no_detection_frames:
+                    cv2.rectangle(image_data, (int(x1), int(y1)), (int(x1 + w), int(y1 + h)), color, 2)
+                    text_color = (0, 0, 0)  # Black color for text
+                    cv2.putText(image_data, f"{class_name}-{track_id}", (int(x1) + 10, int(y1) - 5),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, text_color, 2, cv2.LINE_AA)
+                if track_id not in self.paths:
+                    self.paths[track_id] = deque(maxlen=2)
+                    total_track = track_id
+                self.paths[track_id].append(midpoint)
+
+                previous_midpoint = self.paths[track_id][0]
+                origin_previous_midpoint = (previous_midpoint[0], image_data.shape[0] - previous_midpoint[1])
+                # If consecutive_no_detection_count exceeds the threshold, remove corresponding tracks##############
+                if self.consecutive_no_detection_count < self.max_consecutive_no_detection_frames:
+                    self.tracking_results.append([self.timestamp, x1, y1, x2, y2, track_id])
+
+                if self.intersect(midpoint, previous_midpoint, self.line[0], self.line[1]) and track_id not in self.already_counted:
+                    self.class_counter[0] += 1
+                    # Update the person count
+                    self.total_counter += 1
+                    last_track_id = track_id
+
+                    # draw people counting line
+                    cv2.line(image_data, self.line[0], self.line[1], (255, 150, 0), 10)
+
+                    self.already_counted.append(track_id)  # Set already counted for ID to true.
+
+                    angle = self.vector_angle(origin_midpoint, origin_previous_midpoint)
+                    if angle > 0:
+                        self.up_count += 1
+                        # trajectory
+                        self.already_counted_up.append(track_id)
+                    if angle < 0:
+                        self.down_count += 1
+                        # trajectory
+                        self.already_counted_down.append(track_id)
+
+                # Remove the first n elements from upward/downward_points after it reaches m elements
+                m = 300  # Define the threshold for m
+                n = 10  # Define the number of elements to remove
+                if len(self.upward_points) > m:
+                    self.upward_points = self.upward_points[n:]
+                if len(self.downward_points) > m:
+                    self.downward_points = self.downward_points[n:]
+
+                if len(self.paths) > 15:
+                    del self.paths[list(self.paths)[0]]
+
+            self.counting_results.append([self.timestamp, self.total_counter, self.up_count, self.down_count])
+            self.label_person_count.setText(f'{self.total_counter}')
+            self.label_person_up.setText(f'{self.up_count}')
+            self.label_person_down.setText(f'{self.down_count}')
+
+            self.image = self.get_qimage(image_data)
+            self.update()
+
+        except Exception as e:
+            print(f"Error in process_frames_without_excel: {e}")
 
     # Function to draw bounding boxes on the frame
     def draw_bounding_boxes(self, frame, bounding_boxes):
