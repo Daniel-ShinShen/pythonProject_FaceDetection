@@ -223,6 +223,7 @@ class MainWindow(QMainWindow):
         self.label_set.setFont(QFont('Arial', 13))
         self.label_bbox.setFont(QFont('Arial', 13))
         #self.label_bbox.resize(200, 120)
+        self.label_f.setFont(QFont('Arial', 13))
         self.label_frame.setFont(QFont('Arial', 13))
 
         #self.label_person_count.setText('People Count:')
@@ -433,7 +434,7 @@ class MainWindow(QMainWindow):
             self.label_frame.setText(f'Finishing saving excel file.')
             self.peoplecount_checkBox.setEnabled(True)
             print("Finish saving excel file.")
-        self.label_frame.setText(f'frame number: {self.timestamp}/{time_count}')
+        self.label_frame.setText(f'{self.timestamp}/{time_count}')
 
 
     # Receive "image_data" signal from self.record_video and process the frame(image_data)
@@ -454,9 +455,10 @@ class MainWindow(QMainWindow):
             bboxes_xywh = []
             conf = []
             if self.success_loaded:
-                self.label_frame.setText(f'frame number: {self.timestamp}/{self.total_frames - 1}')
+                self.label_f.setText(f'frame number:')
+                self.label_frame.setText(f'{self.timestamp}/{self.total_frames - 1}')
             else:
-                self.label_frame.setText(f'Failed to load excel file.')
+                self.label_f.setText(f'Failed to load excel file.')
 
             # Reset timestamp if video is restarted from frame 0
             if self.video_restarted:
@@ -568,10 +570,11 @@ class MainWindow(QMainWindow):
         try:
             bboxes_xywh = []
             conf = []
-            self.label_frame.setText(f'Processing frame number: {self.timestamp}/{self.total_frames - 1}')
+            self.label_frame.setText(f'Processing frame number:')
+            self.label_frame.setText(f'{self.timestamp}/{self.total_frames - 1}')
             results = self.model(image_data)
             for result in results:
-                print("length of r: ", len(result.boxes.data.tolist()))
+                print("number of human head(s): ", len(result.boxes.data.tolist()))
                 self.label_count.setText(f'{len(result.boxes.data.tolist())} human head(s) detected')
                 if len(result.boxes.data.tolist()) <= 0:
                     self.consecutive_no_detection_count += 1
