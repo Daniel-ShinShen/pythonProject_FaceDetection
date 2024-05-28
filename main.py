@@ -431,7 +431,7 @@ class MainWindow(QMainWindow):
             # Save DataFrame to Excel file
             self.df_counting.to_excel(self.counting_excel_path, index=False)
 
-            self.label_frame.setText(f'Finishing saving excel file.')
+            # self.label_frame.setText(f'Finishing saving excel file.')
             self.peoplecount_checkBox.setEnabled(True)
             print("Finish saving excel file.")
         self.label_frame.setText(f'{self.timestamp}/{time_count}')
@@ -570,7 +570,7 @@ class MainWindow(QMainWindow):
         try:
             bboxes_xywh = []
             conf = []
-            self.label_frame.setText(f'Processing frame number:')
+            self.label_f.setText(f'Processing frame number:')
             self.label_frame.setText(f'{self.timestamp}/{self.total_frames - 1}')
             results = self.model(image_data)
             for result in results:
