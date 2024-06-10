@@ -14,4 +14,8 @@
 ![圖片11](https://github.com/Daniel-ShinShen/pythonProject_FaceDetection/assets/104411744/b007b9f9-9f88-4dec-bef7-c795c3b136e7)
 
 ## Final result:
-![圖片12](https://github.com/Daniel-ShinShen/pythonProject_FaceDetection/assets/104411744/744d8cc1-065d-4ff8-8b13-af91a3754623)
+![image](https://github.com/Daniel-ShinShen/pythonProject_FaceDetection/assets/104411744/8a4dcdff-96a4-4b1e-8863-d4a3ff4fdba1)
+
+## Reference:
+[1] Object Tracking and counting using YOLOv8 and DeepSORT | Counting Persons [https://www.youtube.com/watch?v=Y2fyDYcfmBg]
+[2] https://github.com/zengwb-lx/yolov5-deepsort-pedestrian-counting/blob/master/person_count.py
